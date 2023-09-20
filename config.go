@@ -1,6 +1,6 @@
 // Copyright 2023 NJWS Inc.
 
-package uiconnector
+package uilib
 
 import "time"
 

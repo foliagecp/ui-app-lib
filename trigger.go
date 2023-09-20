@@ -13,9 +13,7 @@ import (
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 )
 
-// subscriber - optional
-// destination
-func (h *statefunHandler) createTriggerFunction(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+func (h *statefunHandler) createTrigger(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	self := contextProcessor.Self
 	caller := contextProcessor.Caller
 	payload := contextProcessor.Payload
@@ -61,9 +59,11 @@ func (h *statefunHandler) updateTrigger(executor sfplugins.StatefunExecutor, con
 }
 
 func (h *statefunHandler) updateTriggerSubscriber(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+	const op = "updateTriggerSubscriber"
+
 	self := contextProcessor.Self
 
-	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, "updateTriggerSubscriber")
+	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, op)
 	if err != nil {
 		return
 	}
@@ -71,8 +71,8 @@ func (h *statefunHandler) updateTriggerSubscriber(executor sfplugins.StatefunExe
 	object := contextProcessor.GetObjectContext()
 
 	defer func() {
-		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, "updateTriggerSubscriber"); err != nil {
-			slog.Warn("Key mutex unlock", "caller", "updateTriggerSubscriber", "error", err)
+		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, op); err != nil {
+			slog.Warn("Key mutex unlock", "caller", op, "error", err)
 		}
 	}()
 

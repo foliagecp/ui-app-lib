@@ -42,22 +42,22 @@ func RegisterAllFunctionTypes(runtime *statefun.Runtime, opts ...UIOpt) {
 		opt(h)
 	}
 
-	statefun.NewFunctionType(runtime, h.cfg.IngressTopic, h.clientInit, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, h.cfg.IngressTopic, h.initClient, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, clientEgressFunction, h.clientEgress, *statefun.NewFunctionTypeConfig())
 
-	statefun.NewFunctionType(runtime, sessionInitFunction, h.sessionInit, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, sessionCreateFunction, h.createSessionFunction, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, sessionDeleteFunction, h.deleteSessionFunction, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, sessionUnsubFunction, h.unsubSessionFunction, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, sessionAutoControlFunction, h.clientSessionAutoControl, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, sessionInitFunction, h.initSession, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, sessionCreateFunction, h.createSession, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, sessionDeleteFunction, h.deleteSession, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, sessionUnsubFunction, h.unsubSession, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, sessionAutoControlFunction, h.sessionAutoControl, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, sessionCommandFunction, h.sessionCommand, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, clientControllersSetFunction, h.clientControllersSet, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, clientControllersSetFunction, h.setSessionController, *statefun.NewFunctionTypeConfig())
 
-	statefun.NewFunctionType(runtime, controllerSetupFunction, h.setupControllerFunction, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, controllerUnsubFunction, h.unsubControllerFunction, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, controllerSetupFunction, h.setupController, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, controllerUnsubFunction, h.unsubController, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, controllerConstructCreate, h.createControllerConstruct, *statefun.NewFunctionTypeConfig())
 
-	statefun.NewFunctionType(runtime, triggerCreateFunction, h.createTriggerFunction, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, triggerCreateFunction, h.createTrigger, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, triggerSubscriberUpdateFunction, h.updateTriggerSubscriber, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, triggerUpdateFunction, h.updateTrigger, *statefun.NewFunctionTypeConfig())
 }

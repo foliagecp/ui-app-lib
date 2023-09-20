@@ -1,6 +1,6 @@
 
 
-package uiconnector
+package uilib
 
 import (
 	"github.com/foliagecp/sdk/statefun"

@@ -1,6 +1,6 @@
 
 
-package uiconnector
+package uilib
 
 import (
 	"fmt"

@@ -13,7 +13,7 @@ import (
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 )
 
-func (h *statefunHandler) clientInit(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+func (h *statefunHandler) initClient(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	id := contextProcessor.Self.ID
 	payload := contextProcessor.Payload
 	sessionID := generateSessionID(id)
@@ -23,7 +23,7 @@ func (h *statefunHandler) clientInit(executor sfplugins.StatefunExecutor, contex
 	contextProcessor.Call(sessionInitFunction, sessionID, payload, nil)
 }
 
-func (h *statefunHandler) sessionInit(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+func (h *statefunHandler) initSession(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	sessionID := contextProcessor.Self.ID
 	payload := contextProcessor.Payload
 
@@ -71,7 +71,7 @@ func (h *statefunHandler) clientEgress(executor sfplugins.StatefunExecutor, cont
 	contextProcessor.Egress(h.cfg.EgressTopic+"."+clientID, payload)
 }
 
-func (h *statefunHandler) createSessionFunction(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+func (h *statefunHandler) createSession(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	self := contextProcessor.Self
 	payload := contextProcessor.Payload
 	queryID := common.GetQueryID(contextProcessor)
@@ -113,11 +113,13 @@ func (h *statefunHandler) createSessionFunction(executor sfplugins.StatefunExecu
 	common.ReplyQueryID(queryID, &result, contextProcessor)
 }
 
-func (h *statefunHandler) deleteSessionFunction(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+func (h *statefunHandler) deleteSession(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+	const op = "deleteSession"
+
 	self := contextProcessor.Self
 	queryID := common.GetQueryID(contextProcessor)
 
-	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, "deleteSessionFunction")
+	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, op)
 	if err != nil {
 		return
 	}
@@ -129,8 +131,8 @@ func (h *statefunHandler) deleteSessionFunction(executor sfplugins.StatefunExecu
 		return
 	}
 
-	if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, "deleteSessionFunction"); err != nil {
-		slog.Warn("Key mutex unlock", "caller", "deleteSessionFunction", "error", err)
+	if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, op); err != nil {
+		slog.Warn("Key mutex unlock", "caller", op, "error", err)
 	}
 
 	if _, err := contextProcessor.GolangCallSync(sessionUnsubFunction, self.ID, easyjson.NewJSONObject().GetPtr(), nil); err != nil {
@@ -144,7 +146,7 @@ func (h *statefunHandler) deleteSessionFunction(executor sfplugins.StatefunExecu
 	common.ReplyQueryID(queryID, &result, contextProcessor)
 }
 
-func (h *statefunHandler) unsubSessionFunction(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+func (h *statefunHandler) unsubSession(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	self := contextProcessor.Self
 	queryID := common.GetQueryID(contextProcessor)
 
@@ -185,7 +187,7 @@ func (h *statefunHandler) sessionCommand(executor sfplugins.StatefunExecutor, co
 	}
 }
 
-func (h *statefunHandler) clientSessionAutoControl(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+func (h *statefunHandler) sessionAutoControl(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	sessionID := contextProcessor.Self.ID
 	payload := contextProcessor.Payload
 
@@ -248,10 +250,7 @@ controller object structure from ui:
 		...
 	}
 */
-
-// create controller obj if not exists
-// create link
-func (h *statefunHandler) clientControllersSet(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+func (h *statefunHandler) setSessionController(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	sessionID := contextProcessor.Self.ID
 	payload := contextProcessor.Payload
 

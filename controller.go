@@ -27,25 +27,27 @@ var (
 
 	controller_name: {
 		body: {...},
-		subscribers: {} -> TODO: use links instead of map.
+		subscribers: as links
 		construct: {}
 	},
 */
-func (h *statefunHandler) setupControllerFunction(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+func (h *statefunHandler) setupController(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+	const op = "setupController"
+
 	self := contextProcessor.Self
 	caller := contextProcessor.Caller
 	payload := contextProcessor.Payload
 
 	queryID := common.GetQueryID(contextProcessor)
 
-	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, "setupControllerFunction")
+	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, op)
 	if err != nil {
 		return
 	}
 
 	defer func() {
-		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, "setupControllerFunction"); err != nil {
-			slog.Warn("Key mutex unlock", "caller", "setupControllerFunction", "error", err)
+		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, op); err != nil {
+			slog.Warn("Key mutex unlock", "caller", op, "error", err)
 		}
 	}()
 
@@ -136,19 +138,21 @@ func (h *statefunHandler) setupControllerFunction(executor sfplugins.StatefunExe
 	common.ReplyQueryID(queryID, &result, contextProcessor)
 }
 
-func (h *statefunHandler) unsubControllerFunction(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+func (h *statefunHandler) unsubController(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+	const op = "unsubController"
+
 	caller := contextProcessor.Caller
 	self := contextProcessor.Self
 	queryID := common.GetQueryID(contextProcessor)
 
-	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, "unsubControllerFunction")
+	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, op)
 	if err != nil {
 		return
 	}
 
 	defer func() {
-		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, "unsubControllerFunction"); err != nil {
-			slog.Warn("Key mutex unlock", "caller", "unsubControllerFunction", "error", err)
+		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, op); err != nil {
+			slog.Warn("Key mutex unlock", "caller", op, "error", err)
 		}
 	}()
 
@@ -179,9 +183,9 @@ func (h *statefunHandler) unsubControllerFunction(executor sfplugins.StatefunExe
 
 /*
 @property:<json path>
+
 @function:<function name>:[[arg1 value],[arg2 value],...[argN value]]
 */
-//TODO: check object context
 func (h *statefunHandler) createControllerConstruct(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	objectID := contextProcessor.Self.ID
 	objectContext := contextProcessor.GetObjectContext()
@@ -292,36 +296,3 @@ _Loop:
 	result.SetByPath("status", easyjson.NewJSON(status))
 	contextProcessor.Call(contextProcessor.Caller.Typename, contextProcessor.Caller.ID, &result, nil)
 }
-
-// func (a *statefunHandler) switchLedAutoControl(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
-// 	self := contextProcessor.Self
-// 	object := contextProcessor.GetObjectContext()
-
-// 	leds, ok := object.GetByPath("leds").AsArray()
-// 	if !ok {
-// 		return
-// 	}
-
-// 	randIndex := rand.Intn(len(leds))
-// 	led := leds[randIndex].(map[string]any)
-
-// 	if val, ok := led["on"]; ok {
-// 		boolVal := val.(bool)
-// 		if boolVal {
-// 			led["on"] = false
-// 		} else {
-// 			led["on"] = true
-// 		}
-
-// 		object.SetByPath("leds", easyjson.NewJSON(leds))
-// 		contextProcessor.SetObjectContext(object)
-
-// 		triggers := getChildrenUUIDSByLinkType(contextProcessor, self.ID, "trigger")
-// 		for _, v := range triggers {
-// 			contextProcessor.Call(triggerUpdateFunction, v, easyjson.NewJSONObject().GetPtr(), nil)
-// 		}
-// 	}
-
-// 	time.Sleep(time.Second * 1)
-// 	contextProcessor.Call("functions.led.switch.auto.control", self.ID, easyjson.NewJSONObject().GetPtr(), nil)
-// }

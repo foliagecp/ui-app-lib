@@ -2,11 +2,10 @@
 
 This is a complete set of [Stateful Functions](https://github.com/foliagecp/sdk/blob/main/docs/glossary.md#stateful-functions-statefun) for working with web clients that use [Foliage](https://foliage.dev/)
 
-[![License][License-Image]][License-Url] ![Lint][Lint-Status-Image-Url]
+[![License][License-Image]][License-Url] [![golangci-lint](https://github.com/foliagecp/ui-app-lib/actions/workflows/golangci-ling.yml/badge.svg)](https://github.com/foliagecp/ui-app-lib/actions/workflows/golangci-ling.yml)
 
 [License-Url]: https://www.apache.org/licenses/LICENSE-2.0
 [License-Image]: https://img.shields.io/badge/License-Apache2-blue.svg
-[Lint-Status-Image-Url]: https://github.com/foliagecp/sdk/actions/workflows/golangci-lint.yml/badge.svg
 
 ## Work Flow
 ![Schema](./docs/assets/scheme.jpg)

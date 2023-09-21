@@ -2,7 +2,7 @@
 
 This is a complete set of [Stateful Functions](https://github.com/foliagecp/sdk/blob/main/docs/glossary.md#stateful-functions-statefun) for working with web clients that use [Foliage](https://foliage.dev/)
 
-[![License][License-Image]][License-Url] [![golangci-lint](https://github.com/foliagecp/ui-app-lib/actions/workflows/golangci-ling.yml/badge.svg)](https://github.com/foliagecp/ui-app-lib/actions/workflows/golangci-ling.yml)
+[![License][License-Image]][License-Url] [![golangci-lint](https://github.com/foliagecp/ui-app-lib/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/foliagecp/ui-app-lib/actions/workflows/golangci-lint.yml)
 
 [License-Url]: https://www.apache.org/licenses/LICENSE-2.0
 [License-Image]: https://img.shields.io/badge/License-Apache2-blue.svg
@@ -48,7 +48,7 @@ More detailed and complete scheme you can find [here](./docs/detailed.md)
 6. Subscribe on ```ui.egress.<YOUR_ID>``` and listen result:
 ```json
 {
-  "client_id": "uuid",
+  "client_id": "<YOUR_ID>",
   "creation_time": 1695292826803661600,
   "inactivity_timeout": "15m0s",
   "last_activity_time": 1695292826803661600,

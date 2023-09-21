@@ -13,6 +13,19 @@ import (
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 )
 
+/*
+Payload:
+
+	{
+		command: "info" | "unsub",
+		controllers: {
+			controller_name {
+				body: {},
+				uuids: []
+			}
+		}
+	}
+*/
 func (h *statefunHandler) initClient(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	id := contextProcessor.Self.ID
 	payload := contextProcessor.Payload
@@ -23,6 +36,20 @@ func (h *statefunHandler) initClient(executor sfplugins.StatefunExecutor, contex
 	contextProcessor.Call(sessionInitFunction, sessionID, payload, nil)
 }
 
+/*
+Payload:
+
+	{
+		client_id: "id",
+		command: "info" | "unsub",
+		controllers: {
+			some_controller_name {
+				body: {},
+				uuids: []
+			}
+		}
+	}
+*/
 func (h *statefunHandler) initSession(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	sessionID := contextProcessor.Self.ID
 	payload := contextProcessor.Payload
@@ -54,6 +81,9 @@ func (h *statefunHandler) initSession(executor sfplugins.StatefunExecutor, conte
 	}
 }
 
+/*
+Payload: *easyjson.JSON
+*/
 func (h *statefunHandler) clientEgress(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	payload := contextProcessor.Payload
 	session := contextProcessor.GetObjectContext()
@@ -71,6 +101,13 @@ func (h *statefunHandler) clientEgress(executor sfplugins.StatefunExecutor, cont
 	contextProcessor.Egress(h.cfg.EgressTopic+"."+clientID, payload)
 }
 
+/*
+Payload:
+
+	{
+		client_id: "id",
+	}
+*/
 func (h *statefunHandler) createSession(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	self := contextProcessor.Self
 	payload := contextProcessor.Payload
@@ -165,6 +202,13 @@ func (h *statefunHandler) unsubSession(executor sfplugins.StatefunExecutor, cont
 	common.ReplyQueryID(queryID, &result, contextProcessor)
 }
 
+/*
+Payload:
+
+	{
+		command: "info" | "unsub",
+	}
+*/
 func (h *statefunHandler) sessionCommand(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	sessionID := contextProcessor.Self.ID
 	payload := contextProcessor.Payload
@@ -187,6 +231,13 @@ func (h *statefunHandler) sessionCommand(executor sfplugins.StatefunExecutor, co
 	}
 }
 
+/*
+Payload:
+
+	{
+		creation_time: 1695292826803661600,
+	}
+*/
 func (h *statefunHandler) sessionAutoControl(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	sessionID := contextProcessor.Self.ID
 	payload := contextProcessor.Payload
@@ -236,7 +287,7 @@ func (h *statefunHandler) sessionAutoControl(executor sfplugins.StatefunExecutor
 }
 
 /*
-controller object structure from ui:
+Payload:
 
 	{
 		controller1_name: {
@@ -274,7 +325,7 @@ func (h *statefunHandler) setSessionController(executor sfplugins.StatefunExecut
 
 		for _, uuid := range uuids {
 			// setup controller
-			typename := controllerName + "_" + uuid
+			typename := controllerName + "_" + sessionID + "_" + uuid
 			go func() {
 				if _, err := contextProcessor.GolangCallSync(controllerSetupFunction, typename, &setupPayload, nil); err != nil {
 					slog.Warn("Controller setup failed", "error", err)

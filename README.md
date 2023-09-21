@@ -8,7 +8,7 @@ This is a complete set of [Stateful Functions](https://github.com/foliagecp/sdk/
 [License-Image]: https://img.shields.io/badge/License-Apache2-blue.svg
 
 ## Work Flow
-![Schema](./docs/assets/scheme.jpg)
+<img align="center" width="1000" width="1000" src="./docs/assets/scheme.jpg">
 
 More detailed and complete scheme you can find [here](./docs/detailed.md)
 

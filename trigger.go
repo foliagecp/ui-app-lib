@@ -83,7 +83,7 @@ func (h *statefunHandler) updateTriggerSubscriber(executor sfplugins.StatefunExe
 
 	body := object.GetByPath("body") // declaration
 
-	result, err := contextProcessor.GolangCallSync("functions.controller.construct.create", controllerUUID, &body, nil)
+	result, err := contextProcessor.GolangCallSync(controllerConstructCreate, controllerUUID, &body, nil)
 	if err != nil {
 		slog.Warn("Controller creation construct failed", "error", err)
 	}

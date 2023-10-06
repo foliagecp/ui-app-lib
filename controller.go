@@ -269,6 +269,15 @@ _Loop:
 							break _Loop
 						}
 					}
+				case "getOutLinkTypes":
+					switch len(funcArgs) {
+					case 0:
+						funcResult = getOutLinkTypes(contextProcessor, objectID)
+					default:
+						status = "failed"
+						reasonErr = fmt.Errorf("@function: invalid arguments count %d for funtion %s", len(funcArgs), funcName)
+						break _Loop
+					}
 				default:
 					status = "failed"
 					reasonErr = fmt.Errorf("@function: unknown function: %s", funcName)

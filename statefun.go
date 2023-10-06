@@ -21,6 +21,7 @@ const (
 	controllerSetupFunction   = "functions.controller.setup"
 	controllerUnsubFunction   = "functions.controller.unsub"
 	controllerConstructCreate = "functions.controller.construct.create"
+	controllerProperties      = "functions.controller.properties"
 
 	triggerCreateFunction           = "functions.trigger.create"
 	triggerSubscriberUpdateFunction = "functions.trigger.subscriber.update"
@@ -51,8 +52,8 @@ func RegisterAllFunctionTypes(runtime *statefun.Runtime, opts ...UIOpt) {
 	statefun.NewFunctionType(runtime, sessionUnsubFunction, h.unsubSession, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, sessionAutoControlFunction, h.sessionAutoControl, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, sessionCommandFunction, h.sessionCommand, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, clientControllersSetFunction, h.setSessionController, *statefun.NewFunctionTypeConfig())
 
+	statefun.NewFunctionType(runtime, clientControllersSetFunction, h.setSessionController, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, controllerSetupFunction, h.setupController, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, controllerUnsubFunction, h.unsubController, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, controllerConstructCreate, h.createControllerConstruct, *statefun.NewFunctionTypeConfig())

@@ -56,6 +56,10 @@ More detailed and complete scheme you can find [here](./docs/detailed.md)
 }
 ```
 
+## Documentation
+
+For detailed installation instructions and prerequisites, visit the [official documentation](https://pkg.go.dev/github.com/foliagecp/ui-app-lib).
+
 ## License
 
 Unless otherwise noted, the easyjson source files are distributed under the Apache Version 2.0 license found in the LICENSE file.

@@ -72,12 +72,10 @@ func (h *statefunHandler) initSession(executor sfplugins.StatefunExecutor, conte
 		contextProcessor.SetObjectContext(params)
 	}
 
-	if payload.PathExists("controllers") {
-		contextProcessor.Call(clientControllersSetFunction, sessionID, payload, nil)
-	}
-
 	if payload.PathExists("command") {
 		contextProcessor.Call(sessionCommandFunction, sessionID, payload, nil)
+	} else if payload.PathExists("controllers") {
+		contextProcessor.Call(clientControllersSetFunction, sessionID, payload, nil)
 	}
 }
 

@@ -5,7 +5,6 @@ package uilib
 import (
 	"fmt"
 	"log/slog"
-	"regexp"
 	"strings"
 	"time"
 
@@ -15,9 +14,9 @@ import (
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 )
 
-var (
-	extractFuncRegex = regexp.MustCompile(`(.*?)\(.*\)`)
-	extractArgsRegex = regexp.MustCompile(`\(\s*([^)]+?)\s*\)`)
+const (
+	_PROPERTY = "@property"
+	_FUNCTION = "@function"
 )
 
 /*
@@ -184,7 +183,9 @@ func (h *statefunHandler) unsubController(executor sfplugins.StatefunExecutor, c
 /*
 @property:<json path>
 
-@function:<function name>:[[arg1 value],[arg2 value],...[argN value]]
+@function:<function name>:[[arg1 value],[arg2 value],...[argN value]] - ideal
+
+@function:getChildren(linkType) - now
 */
 func (h *statefunHandler) createControllerConstruct(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
 	objectID := contextProcessor.Self.ID
@@ -199,109 +200,106 @@ func (h *statefunHandler) createControllerConstruct(executor sfplugins.StatefunE
 		return
 	}
 
-	reply := easyjson.NewJSONObject()
-	status := "ok"
-	var reasonErr error
+	decorators := parseDecorators(objectID, payload)
+	decoratorsReply := easyjson.NewJSONObject()
 
-_Loop:
-	for _, key := range payload.ObjectKeys() {
-		bodyValue, bodyExists := payload.GetByPath(key).AsString()
-		if !bodyExists || bodyValue[0] != '@' {
-			reply.SetByPath(key, easyjson.NewJSON(bodyValue))
-			continue
-		}
-
-		tokens := strings.Split(bodyValue, ":")
-		decorator := strings.TrimSpace(tokens[0])
-
-		switch decorator {
-		case "@property":
-			{
-				if len(tokens) == 1 {
-					status = "failed"
-					reasonErr = fmt.Errorf("@property: incorrect declaration for key=%s", bodyValue)
-					break _Loop
-				}
-
-				path := strings.TrimSpace(tokens[1])
-
-				if !objectContext.PathExists(path) {
-					status = "failed"
-					reasonErr = fmt.Errorf("@property: object with uuid=%s does not contain property by json path=%s (at controller key=%s)", objectID, path, key)
-					break _Loop
-				}
-
-				reply.SetByPath(key, objectContext.GetByPath(path))
-			}
-		case "@function":
-			{
-				functionWithArgs := strings.TrimSpace(bodyValue[len("@function:"):])
-
-				matchFunc := extractFuncRegex.FindStringSubmatch(functionWithArgs)
-				matchArgs := extractArgsRegex.FindStringSubmatch(functionWithArgs)
-
-				if len(matchFunc) != 2 {
-					status = "failed"
-					reasonErr = fmt.Errorf("@function: invalid function format: %s", functionWithArgs)
-					break _Loop
-				}
-
-				funcName := matchFunc[1]
-				funcArgs := make([]string, 0)
-
-				if len(matchArgs) == 2 {
-					funcArgs = strings.Split(matchArgs[1], ",")
-				}
-
-				var funcResult []string
-
-				switch funcName {
-				case "getChildrenUUIDSByLinkType":
-					{
-						switch len(funcArgs) {
-						case 0:
-							funcResult = getChildrenUUIDSByLinkType(contextProcessor, objectID, "")
-						case 1:
-							funcResult = getChildrenUUIDSByLinkType(contextProcessor, objectID, funcArgs[0])
-						default:
-							status = "failed"
-							reasonErr = fmt.Errorf("@function: invalid arguments count %d for funtion %s", len(funcArgs), funcName)
-							break _Loop
-						}
-					}
-				case "getOutLinkTypes":
-					switch len(funcArgs) {
-					case 0:
-						funcResult = getOutLinkTypes(contextProcessor, objectID)
-					default:
-						status = "failed"
-						reasonErr = fmt.Errorf("@function: invalid arguments count %d for funtion %s", len(funcArgs), funcName)
-						break _Loop
-					}
-				default:
-					status = "failed"
-					reasonErr = fmt.Errorf("@function: unknown function: %s", funcName)
-					break _Loop
-				}
-
-				reply.SetByPath(key, easyjson.JSONFromArray(funcResult))
-			}
-		default:
-			slog.Warn("controller_value_decorator: unknown decorator", "decorator", decorator)
-			reply.SetByPath(key, easyjson.NewJSONNull())
-		}
+	for key, cd := range decorators {
+		result := cd.Invoke(contextProcessor)
+		decoratorsReply.SetByPath(key, result)
 	}
 
 	result := easyjson.NewJSONObject()
+	result.SetByPath("result", decoratorsReply)
+	contextProcessor.Call(contextProcessor.Caller.Typename, contextProcessor.Caller.ID, &result, nil)
+}
 
-	if status != "ok" {
-		slog.Warn(reasonErr.Error())
+type controllerDecorator interface {
+	Invoke(ctx *sfplugins.StatefunContextProcessor) easyjson.JSON
+}
 
-		result.SetByPath("result", easyjson.NewJSON(reasonErr.Error()))
-	} else {
-		result.SetByPath("result", reply)
+type controllerProperty struct {
+	id   string
+	path string
+}
+
+func (c *controllerProperty) Invoke(ctx *sfplugins.StatefunContextProcessor) easyjson.JSON {
+	return ctx.GetObjectContext().GetByPath(c.path)
+}
+
+type controllerFunction struct {
+	id       string
+	function string
+	args     []string
+}
+
+func (c *controllerFunction) Invoke(ctx *sfplugins.StatefunContextProcessor) easyjson.JSON {
+	switch c.function {
+	case "getChildrenUUIDSByLinkType":
+		lt := ""
+		if len(c.args) > 0 {
+			lt = c.args[0]
+		}
+
+		children := getChildrenUUIDSByLinkType(ctx, c.id, lt)
+		return easyjson.NewJSON(children)
+	case "getOutLinkTypes":
+		outLinks := getOutLinkTypes(ctx, c.id)
+		return easyjson.NewJSON(outLinks)
 	}
 
-	result.SetByPath("status", easyjson.NewJSON(status))
-	contextProcessor.Call(contextProcessor.Caller.Typename, contextProcessor.Caller.ID, &result, nil)
+	return easyjson.NewJSONNull()
+}
+
+func parseDecorators(objectID string, payload *easyjson.JSON) map[string]controllerDecorator {
+	decorators := make(map[string]controllerDecorator)
+
+	for _, key := range payload.ObjectKeys() {
+		body := payload.GetByPath(key).AsStringDefault("")
+		tokens := strings.Split(body, ":")
+		if len(tokens) < 2 {
+			continue
+		}
+
+		decorator := tokens[0]
+		value := tokens[1]
+
+		switch decorator {
+		case _PROPERTY:
+			// TODO: add check value
+			decorators[key] = &controllerProperty{
+				id:   objectID,
+				path: value,
+			}
+		case _FUNCTION:
+			{
+				f, args, err := extractFunctionAndArgs(value)
+				if err != nil {
+					slog.Warn(err.Error())
+					continue
+				}
+
+				decorators[key] = &controllerFunction{
+					id:       objectID,
+					function: f,
+					args:     args,
+				}
+			}
+		default:
+			slog.Warn("parse decorator: unknown decorator", "decorator", decorator)
+		}
+	}
+
+	return decorators
+}
+
+func extractFunctionAndArgs(s string) (string, []string, error) {
+	split := strings.Split(strings.TrimRight(s, ")"), "(")
+	if len(split) != 2 {
+		return "", nil, fmt.Errorf("@function: invalid function format: %s", s)
+	}
+
+	funcName := split[0]
+	funcArgs := strings.Split(strings.TrimSpace(split[1]), ",")
+
+	return funcName, funcArgs, nil
 }

@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/foliagecp/easyjson"
-	"github.com/foliagecp/sdk/embedded/graph/common"
 	"github.com/foliagecp/sdk/statefun"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 )
@@ -18,6 +16,8 @@ const (
 	_PROPERTY = "@property"
 	_FUNCTION = "@function"
 )
+
+const controllerSetupFunction = "functions.controller.setup"
 
 /*
 	payload: {
@@ -31,46 +31,28 @@ const (
 	},
 */
 func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
-	const op = "setupController"
-
 	self := ctxProcessor.Self
 	caller := ctxProcessor.Caller
 	payload := ctxProcessor.Payload
 
-	queryID := common.GetQueryID(ctxProcessor)
-
-	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, op)
+	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, controllerSetupFunction)
 	if err != nil {
 		return
 	}
 
 	defer func() {
-		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, op); err != nil {
-			slog.Warn("Key mutex unlock", "caller", op, "error", err)
+		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, controllerSetupFunction); err != nil {
+			slog.Warn("Key mutex unlock", "caller", controllerSetupFunction, "error", err)
 		}
 	}()
 
+	slog.Info("setup controller", "id", self.ID)
+
 	object := ctxProcessor.GetObjectContext()
 
-	now := time.Now()
-
-	if object.PathExists(caller.ID) {
-		last, _ := object.GetByPath(caller.ID).AsNumeric()
-		if int64(last)+int64(time.Second*2) > now.UnixNano() {
-			return
-		}
-	}
-
-	object.SetByPath(caller.ID, easyjson.NewJSON(time.Now().UnixNano()))
-
 	split := strings.Split(self.ID, "_")
-
 	controllerName := split[0]
 	controllerUUID := split[len(split)-1]
-
-	if payload.PathExists("result") {
-		return
-	}
 
 	bodyIsEmpty := !object.GetByPath("body").IsNonEmptyObject()
 
@@ -135,32 +117,23 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 		}
 	}
 
-	// if strings.Contains(controllerUUID, "leds") {
-	// 	ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal,ledAutoSwitchFunction, controllerUUID, easyjson.NewJSONObject().GetPtr(), nil)
-	// }
-
-	result := easyjson.NewJSONObject()
-	result.SetByPath("status", easyjson.NewJSON("ok"))
-	result.SetByPath("result", easyjson.NewJSON(""))
-
-	common.ReplyQueryID(queryID, &result, ctxProcessor)
+	replyOk(ctxProcessor)
 }
 
-func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
-	const op = "unsubController"
+const controllerUnsubFunction = "functions.controller.unsub"
 
+func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	caller := ctxProcessor.Caller
 	self := ctxProcessor.Self
-	queryID := common.GetQueryID(ctxProcessor)
 
-	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, op)
+	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, controllerUnsubFunction)
 	if err != nil {
 		return
 	}
 
 	defer func() {
-		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, op); err != nil {
-			slog.Warn("Key mutex unlock", "caller", op, "error", err)
+		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, controllerUnsubFunction); err != nil {
+			slog.Warn("Key mutex unlock", "caller", controllerUnsubFunction, "error", err)
 		}
 	}()
 
@@ -182,12 +155,10 @@ func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProce
 		}
 	}
 
-	result := easyjson.NewJSONObject()
-	result.SetByPath("status", easyjson.NewJSON("ok"))
-	result.SetByPath("result", easyjson.NewJSON(""))
-
-	common.ReplyQueryID(queryID, &result, ctxProcessor)
+	replyOk(ctxProcessor)
 }
+
+const controllerConstructCreate = "functions.controller.construct.create"
 
 /*
 @property:<json path>
@@ -198,32 +169,17 @@ func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProce
 */
 func (h *statefunHandler) createControllerConstruct(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	objectID := ctxProcessor.Self.ID
-	objectContext := ctxProcessor.GetObjectContext()
 	payload := ctxProcessor.Payload
-
-	if !objectContext.IsNonEmptyObject() {
-		result := easyjson.NewJSONObject()
-		result.SetByPath("result", easyjson.NewJSON(fmt.Errorf("%v is empty objects", objectID)))
-		result.SetByPath("status", easyjson.NewJSON("failed"))
-
-		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, ctxProcessor.Caller.Typename, ctxProcessor.Caller.ID, &result, nil); err != nil {
-			slog.Warn(err.Error())
-		}
-
-		return
-	}
 
 	decorators := parseDecorators(objectID, payload)
 	decoratorsReply := easyjson.NewJSONObject()
 
 	for key, cd := range decorators {
-		result := cd.Invoke(contextProcessor)
+		result := cd.Invoke(ctxProcessor)
 		decoratorsReply.SetByPath(key, result)
 	}
 
-	result := easyjson.NewJSONObject()
-	result.SetByPath("result", decoratorsReply)
-	contextProcessor.Call(contextProcessor.Caller.Typename, contextProcessor.Caller.ID, &result, nil)
+	reply(ctxProcessor, "ok", decoratorsReply)
 }
 
 type controllerDecorator interface {

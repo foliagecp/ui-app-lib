@@ -8,10 +8,11 @@ import (
 	"strings"
 
 	"github.com/foliagecp/easyjson"
-	"github.com/foliagecp/sdk/embedded/graph/common"
 	"github.com/foliagecp/sdk/statefun"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 )
+
+const triggerCreateFunction = "functions.trigger.create"
 
 func (h *statefunHandler) createTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	self := ctxProcessor.Self
@@ -25,9 +26,6 @@ func (h *statefunHandler) createTrigger(_ sfplugins.StatefunExecutor, ctxProcess
 	triggerBodyIsEmpty := !object.GetByPath("body").IsNonEmptyObject()
 
 	if triggerBodyIsEmpty {
-		// object.SetByPath("body", easyjson.NewJSONObject())
-		// ctxProcessor.SetObjectContext(object)
-
 		if err := createLink(ctxProcessor, dest, self.ID, "trigger", easyjson.NewJSONObject().GetPtr(), self.ID); err != nil {
 			slog.Warn("Cannot create link", "error", err)
 		}
@@ -41,14 +39,10 @@ func (h *statefunHandler) createTrigger(_ sfplugins.StatefunExecutor, ctxProcess
 		slog.Warn("Cannot create link", "error", err)
 	}
 
-	queryID := common.GetQueryID(ctxProcessor)
-
-	result := easyjson.NewJSONObject()
-	result.SetByPath("status", easyjson.NewJSON("ok"))
-	result.SetByPath("result", easyjson.NewJSON(""))
-
-	common.ReplyQueryID(queryID, &result, ctxProcessor)
+	replyOk(ctxProcessor)
 }
+
+const triggerUpdateFunction = "functions.trigger.update"
 
 func (h *statefunHandler) updateTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	self := ctxProcessor.Self
@@ -60,12 +54,12 @@ func (h *statefunHandler) updateTrigger(_ sfplugins.StatefunExecutor, ctxProcess
 	}
 }
 
-func (h *statefunHandler) updateTriggerSubscriber(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
-	const op = "updateTriggerSubscriber"
+const triggerSubscriberUpdateFunction = "functions.trigger.subscriber.update"
 
+func (h *statefunHandler) updateTriggerSubscriber(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	self := ctxProcessor.Self
 
-	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, op)
+	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, triggerSubscriberUpdateFunction)
 	if err != nil {
 		return
 	}
@@ -73,8 +67,8 @@ func (h *statefunHandler) updateTriggerSubscriber(_ sfplugins.StatefunExecutor, 
 	object := ctxProcessor.GetObjectContext()
 
 	defer func() {
-		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, op); err != nil {
-			slog.Warn("Key mutex unlock", "caller", op, "error", err)
+		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, triggerSubscriberUpdateFunction); err != nil {
+			slog.Warn("Key mutex unlock", "caller", triggerSubscriberUpdateFunction, "error", err)
 		}
 	}()
 
@@ -90,7 +84,7 @@ func (h *statefunHandler) updateTriggerSubscriber(_ sfplugins.StatefunExecutor, 
 		slog.Warn("Controller creation construct failed", "error", err)
 	}
 
-	newControllerConstruct := result.GetByPath("result")
+	newControllerConstruct := result.GetByPath("payload.result")
 	oldControllerConstruct := object.GetByPath("construct")
 
 	if oldControllerConstruct.IsNonEmptyObject() && newControllerConstruct.Equals(oldControllerConstruct) {

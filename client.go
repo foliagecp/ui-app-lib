@@ -8,10 +8,11 @@ import (
 	"time"
 
 	"github.com/foliagecp/easyjson"
-	"github.com/foliagecp/sdk/embedded/graph/common"
 	"github.com/foliagecp/sdk/statefun"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 )
+
+const clientIngressFunction = "ui.ingress"
 
 /*
 Payload:
@@ -37,6 +38,8 @@ func (h *statefunHandler) initClient(_ sfplugins.StatefunExecutor, ctxProcessor 
 		slog.Warn(err.Error())
 	}
 }
+
+const sessionInitFunction = "functions.client.session.init"
 
 /*
 Payload:
@@ -88,6 +91,8 @@ func (h *statefunHandler) initSession(_ sfplugins.StatefunExecutor, ctxProcessor
 	}
 }
 
+const clientEgressFunction = "ui.pre.egress"
+
 /*
 Payload: *easyjson.JSON
 */
@@ -115,6 +120,8 @@ func (h *statefunHandler) clientEgress(_ sfplugins.StatefunExecutor, ctxProcesso
 	}
 }
 
+const sessionCreateFunction = "functions.client.session.create"
+
 /*
 Payload:
 
@@ -125,7 +132,6 @@ Payload:
 func (h *statefunHandler) createSession(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	self := ctxProcessor.Self
 	payload := ctxProcessor.Payload
-	queryID := common.GetQueryID(ctxProcessor)
 
 	sessionID := payload.GetByPath("session_id").AsStringDefault("")
 	if sessionID == "" {
@@ -157,49 +163,44 @@ func (h *statefunHandler) createSession(_ sfplugins.StatefunExecutor, ctxProcess
 		return
 	}
 
-	result := easyjson.NewJSONObject()
-	result.SetByPath("status", easyjson.NewJSON("ok"))
-	result.SetByPath("result", body)
-
-	common.ReplyQueryID(queryID, &result, ctxProcessor)
+	replyOk(ctxProcessor)
 }
+
+const sessionDeleteFunction = "functions.client.session.delete"
 
 func (h *statefunHandler) deleteSession(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	const op = "deleteSession"
 
 	self := ctxProcessor.Self
-	queryID := common.GetQueryID(ctxProcessor)
 
 	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, op)
 	if err != nil {
 		return
 	}
 
+	defer func() {
+		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, op); err != nil {
+			slog.Warn("Key mutex unlock", "caller", op, "error", err)
+		}
+	}()
+
 	deleteObjectPayload := easyjson.NewJSONObject()
-	deleteObjectPayload.SetByPath("query_id", easyjson.NewJSON(queryID))
 	if _, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, "functions.graph.ll.api.object.delete", self.ID, &deleteObjectPayload, nil); err != nil {
 		slog.Error("Cannot delete session", "session_id", self.ID, "error", err)
 		return
-	}
-
-	if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, op); err != nil {
-		slog.Warn("Key mutex unlock", "caller", op, "error", err)
 	}
 
 	if _, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, sessionUnsubFunction, self.ID, easyjson.NewJSONObject().GetPtr(), nil); err != nil {
 		slog.Warn("Session unsub failed", "error", err)
 	}
 
-	result := easyjson.NewJSONObject()
-	result.SetByPath("status", easyjson.NewJSON("ok"))
-	result.SetByPath("result", easyjson.NewJSON(""))
-
-	common.ReplyQueryID(queryID, &result, ctxProcessor)
+	replyOk(ctxProcessor)
 }
+
+const sessionUnsubFunction = "functions.client.session.unsub"
 
 func (h *statefunHandler) unsubSession(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	self := ctxProcessor.Self
-	queryID := common.GetQueryID(ctxProcessor)
 
 	controllers := getChildrenUUIDSByLinkType(ctxProcessor, self.ID, "controller")
 
@@ -209,12 +210,10 @@ func (h *statefunHandler) unsubSession(_ sfplugins.StatefunExecutor, ctxProcesso
 		}
 	}
 
-	result := easyjson.NewJSONObject()
-	result.SetByPath("status", easyjson.NewJSON("ok"))
-	result.SetByPath("result", easyjson.NewJSON(""))
-
-	common.ReplyQueryID(queryID, &result, ctxProcessor)
+	replyOk(ctxProcessor)
 }
+
+const sessionCommandFunction = "functions.client.session.command"
 
 /*
 Payload:
@@ -248,6 +247,8 @@ func (h *statefunHandler) sessionCommand(_ sfplugins.StatefunExecutor, ctxProces
 		}
 	}
 }
+
+const sessionAutoControlFunction = "functions.client.session.auto.control"
 
 /*
 Payload:
@@ -318,6 +319,8 @@ func (h *statefunHandler) sessionAutoControl(_ sfplugins.StatefunExecutor, ctxPr
 		slog.Warn(err.Error())
 	}
 }
+
+const clientControllersSetFunction = "functions.client.controllers.set"
 
 /*
 Payload:

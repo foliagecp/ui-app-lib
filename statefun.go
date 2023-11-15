@@ -6,28 +6,6 @@ import (
 	"github.com/foliagecp/sdk/statefun"
 )
 
-const (
-	clientIngressFunction = "ui.ingress"
-	clientEgressFunction  = "ui.pre.egress"
-
-	sessionInitFunction          = "functions.client.session.init"
-	sessionCreateFunction        = "functions.client.session.create"
-	sessionDeleteFunction        = "functions.client.session.delete"
-	sessionUnsubFunction         = "functions.client.session.unsub"
-	sessionCommandFunction       = "functions.client.session.command"
-	sessionAutoControlFunction   = "functions.client.session.auto.control"
-	clientControllersSetFunction = "functions.client.controllers.set"
-
-	controllerSetupFunction   = "functions.controller.setup"
-	controllerUnsubFunction   = "functions.controller.unsub"
-	controllerConstructCreate = "functions.controller.construct.create"
-	controllerProperties      = "functions.controller.properties"
-
-	triggerCreateFunction           = "functions.trigger.create"
-	triggerSubscriberUpdateFunction = "functions.trigger.subscriber.update"
-	triggerUpdateFunction           = "functions.trigger.update"
-)
-
 type statefunHandler struct {
 	runtime *statefun.Runtime
 	cfg     *config

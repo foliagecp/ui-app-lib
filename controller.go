@@ -30,14 +30,14 @@ const (
 		construct: {}
 	},
 */
-func (h *statefunHandler) setupController(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	const op = "setupController"
 
-	self := contextProcessor.Self
-	caller := contextProcessor.Caller
-	payload := contextProcessor.Payload
+	self := ctxProcessor.Self
+	caller := ctxProcessor.Caller
+	payload := ctxProcessor.Payload
 
-	queryID := common.GetQueryID(contextProcessor)
+	queryID := common.GetQueryID(ctxProcessor)
 
 	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, op)
 	if err != nil {
@@ -50,7 +50,7 @@ func (h *statefunHandler) setupController(executor sfplugins.StatefunExecutor, c
 		}
 	}()
 
-	object := contextProcessor.GetObjectContext()
+	object := ctxProcessor.GetObjectContext()
 
 	now := time.Now()
 
@@ -79,24 +79,28 @@ func (h *statefunHandler) setupController(executor sfplugins.StatefunExecutor, c
 		controllerBody.SetByPath("body", payload.GetByPath("body"))
 		controllerBody.SetByPath("construct", easyjson.NewJSONObject())
 
-		contextProcessor.SetObjectContext(&controllerBody)
+		ctxProcessor.SetObjectContext(&controllerBody)
 
-		if err := createLink(contextProcessor, self.ID, caller.ID, "subscriber", easyjson.NewJSONObject().GetPtr(), caller.ID); err != nil {
+		if err := createLink(ctxProcessor, self.ID, caller.ID, "subscriber", easyjson.NewJSONObject().GetPtr(), caller.ID); err != nil {
 			slog.Error("Cannot create link", "error", err)
 			return
 		}
 
 		updatePayload := easyjson.NewJSONObject()
-		contextProcessor.Call(triggerSubscriberUpdateFunction, self.ID, &updatePayload, nil)
+		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, triggerSubscriberUpdateFunction, self.ID, &updatePayload, nil); err != nil {
+			slog.Warn(err.Error())
+		}
 
 		//subscribe on objects for update
 		triggerID := "trigger_" + controllerUUID
 		triggerCreatePayload := easyjson.NewJSONObject()
 		triggerCreatePayload.SetByPath("subscriber", easyjson.NewJSON(self.ID))
 		triggerCreatePayload.SetByPath("destination", easyjson.NewJSON(controllerUUID))
-		contextProcessor.Call(triggerCreateFunction, triggerID, &triggerCreatePayload, nil)
+		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, triggerCreateFunction, triggerID, &triggerCreatePayload, nil); err != nil {
+			slog.Warn(err.Error())
+		}
 	} else {
-		subscribers := getChildrenUUIDSByLinkType(contextProcessor, self.ID, "subscriber")
+		subscribers := getChildrenUUIDSByLinkType(ctxProcessor, self.ID, "subscriber")
 
 		for _, v := range subscribers {
 			if v == caller.ID {
@@ -104,7 +108,7 @@ func (h *statefunHandler) setupController(executor sfplugins.StatefunExecutor, c
 			}
 		}
 
-		if err := createLink(contextProcessor, self.ID, caller.ID, "subscriber", easyjson.NewJSONObject().GetPtr(), caller.ID); err != nil {
+		if err := createLink(ctxProcessor, self.ID, caller.ID, "subscriber", easyjson.NewJSONObject().GetPtr(), caller.ID); err != nil {
 			slog.Error("Cannot create link", "error", err)
 			return
 		}
@@ -115,7 +119,9 @@ func (h *statefunHandler) setupController(executor sfplugins.StatefunExecutor, c
 			reply := easyjson.NewJSONObject()
 			reply.SetByPath(path, construct)
 
-			contextProcessor.Call(clientEgressFunction, caller.ID, &reply, nil)
+			if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, clientEgressFunction, caller.ID, &reply, nil); err != nil {
+				slog.Warn(err.Error())
+			}
 		}
 
 		//subscribe on objects for update
@@ -123,26 +129,29 @@ func (h *statefunHandler) setupController(executor sfplugins.StatefunExecutor, c
 		triggerCreatePayload := easyjson.NewJSONObject()
 		triggerCreatePayload.SetByPath("subscriber", easyjson.NewJSON(self.ID))
 		triggerCreatePayload.SetByPath("destination", easyjson.NewJSON(controllerUUID))
-		contextProcessor.Call(triggerCreateFunction, triggerID, &triggerCreatePayload, nil)
+
+		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, triggerCreateFunction, triggerID, &triggerCreatePayload, nil); err != nil {
+			slog.Warn(err.Error())
+		}
 	}
 
 	// if strings.Contains(controllerUUID, "leds") {
-	// 	contextProcessor.Call(ledAutoSwitchFunction, controllerUUID, easyjson.NewJSONObject().GetPtr(), nil)
+	// 	ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal,ledAutoSwitchFunction, controllerUUID, easyjson.NewJSONObject().GetPtr(), nil)
 	// }
 
 	result := easyjson.NewJSONObject()
 	result.SetByPath("status", easyjson.NewJSON("ok"))
 	result.SetByPath("result", easyjson.NewJSON(""))
 
-	common.ReplyQueryID(queryID, &result, contextProcessor)
+	common.ReplyQueryID(queryID, &result, ctxProcessor)
 }
 
-func (h *statefunHandler) unsubController(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
+func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	const op = "unsubController"
 
-	caller := contextProcessor.Caller
-	self := contextProcessor.Self
-	queryID := common.GetQueryID(contextProcessor)
+	caller := ctxProcessor.Caller
+	self := ctxProcessor.Self
+	queryID := common.GetQueryID(ctxProcessor)
 
 	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, op)
 	if err != nil {
@@ -159,15 +168,15 @@ func (h *statefunHandler) unsubController(executor sfplugins.StatefunExecutor, c
 	link.SetByPath("descendant_uuid", easyjson.NewJSON(caller.ID))
 	link.SetByPath("link_type", easyjson.NewJSON("subscriber"))
 
-	if _, err := contextProcessor.GolangCallSync("functions.graph.ll.api.link.delete", self.ID, &link, nil); err != nil {
+	if _, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, "functions.graph.ll.api.link.delete", self.ID, &link, nil); err != nil {
 		slog.Warn("Cannot delete link", "error", err)
 		return
 	}
 
-	subs := getChildrenUUIDSByLinkType(contextProcessor, self.ID, "subscriber")
+	subs := getChildrenUUIDSByLinkType(ctxProcessor, self.ID, "subscriber")
 	if len(subs) == 0 {
 		deleteObjectPayload := easyjson.NewJSONObject()
-		_, err := contextProcessor.GolangCallSync("functions.graph.ll.api.object.delete", self.ID, &deleteObjectPayload, nil)
+		_, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, "functions.graph.ll.api.object.delete", self.ID, &deleteObjectPayload, nil)
 		if err != nil {
 			slog.Warn("Cannot delete object", "error", err)
 		}
@@ -177,7 +186,7 @@ func (h *statefunHandler) unsubController(executor sfplugins.StatefunExecutor, c
 	result.SetByPath("status", easyjson.NewJSON("ok"))
 	result.SetByPath("result", easyjson.NewJSON(""))
 
-	common.ReplyQueryID(queryID, &result, contextProcessor)
+	common.ReplyQueryID(queryID, &result, ctxProcessor)
 }
 
 /*
@@ -187,16 +196,20 @@ func (h *statefunHandler) unsubController(executor sfplugins.StatefunExecutor, c
 
 @function:getChildren(linkType) - now
 */
-func (h *statefunHandler) createControllerConstruct(executor sfplugins.StatefunExecutor, contextProcessor *sfplugins.StatefunContextProcessor) {
-	objectID := contextProcessor.Self.ID
-	objectContext := contextProcessor.GetObjectContext()
-	payload := contextProcessor.Payload
+func (h *statefunHandler) createControllerConstruct(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
+	objectID := ctxProcessor.Self.ID
+	objectContext := ctxProcessor.GetObjectContext()
+	payload := ctxProcessor.Payload
 
 	if !objectContext.IsNonEmptyObject() {
 		result := easyjson.NewJSONObject()
 		result.SetByPath("result", easyjson.NewJSON(fmt.Errorf("%v is empty objects", objectID)))
 		result.SetByPath("status", easyjson.NewJSON("failed"))
-		contextProcessor.Call(contextProcessor.Caller.Typename, contextProcessor.Caller.ID, &result, nil)
+
+		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, ctxProcessor.Caller.Typename, ctxProcessor.Caller.ID, &result, nil); err != nil {
+			slog.Warn(err.Error())
+		}
+
 		return
 	}
 

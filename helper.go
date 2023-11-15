@@ -28,7 +28,7 @@ func createLink(ctx *sfplugins.StatefunContextProcessor, from, to, linkType stri
 		link.SetByPath("link_body.tags", easyjson.JSONFromArray(tags))
 	}
 
-	if _, err := ctx.GolangCallSync(op, from, &link, nil); err != nil {
+	if _, err := ctx.Request(sfplugins.GolangLocalRequest, op, from, &link, nil); err != nil {
 		return fmt.Errorf("create link: %w", err)
 	}
 

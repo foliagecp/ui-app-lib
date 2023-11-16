@@ -5,7 +5,6 @@ package uilib
 import (
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/statefun"
@@ -17,14 +16,16 @@ const (
 	_FUNCTION = "@function"
 )
 
-const controllerSetupFunction = "functions.controller.setup"
+const controllerSetupFunction = "functions.client.controller.setup"
 
 /*
 	payload: {
 		body:{},
 	}
 
-	controller_name: {
+	controller_id: {
+		name: string,
+		object_id: string,
 		body: {...},
 		subscribers: as links
 		construct: {}
@@ -46,39 +47,39 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 		}
 	}()
 
-	slog.Info("setup controller", "id", self.ID)
-
 	object := ctxProcessor.GetObjectContext()
-
-	split := strings.Split(self.ID, "_")
-	controllerName := split[0]
-	controllerUUID := split[len(split)-1]
-
 	bodyIsEmpty := !object.GetByPath("body").IsNonEmptyObject()
 
 	if bodyIsEmpty {
 		controllerBody := easyjson.NewJSONObject()
 		controllerBody.SetByPath("body", payload.GetByPath("body"))
+		controllerBody.SetByPath("name", payload.GetByPath("name"))
+		controllerBody.SetByPath("object_id", payload.GetByPath("object_id"))
 		controllerBody.SetByPath("construct", easyjson.NewJSONObject())
 
-		ctxProcessor.SetObjectContext(&controllerBody)
+		tx, err := beginTransaction(ctxProcessor, "full")
+		if err != nil {
+			slog.Warn(err.Error())
+			return
+		}
 
-		if err := createLink(ctxProcessor, self.ID, caller.ID, "subscriber", easyjson.NewJSONObject().GetPtr(), caller.ID); err != nil {
-			slog.Error("Cannot create link", "error", err)
+		if err := tx.createObject(ctxProcessor, self.ID, "controller", &controllerBody); err != nil {
+			slog.Warn(err.Error())
+			return
+		}
+
+		if err := tx.createObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
+			slog.Warn(err.Error())
+			return
+		}
+
+		if err := tx.commit(ctxProcessor); err != nil {
+			slog.Warn(err.Error())
 			return
 		}
 
 		updatePayload := easyjson.NewJSONObject()
-		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, triggerSubscriberUpdateFunction, self.ID, &updatePayload, nil); err != nil {
-			slog.Warn(err.Error())
-		}
-
-		//subscribe on objects for update
-		triggerID := "trigger_" + controllerUUID
-		triggerCreatePayload := easyjson.NewJSONObject()
-		triggerCreatePayload.SetByPath("subscriber", easyjson.NewJSON(self.ID))
-		triggerCreatePayload.SetByPath("destination", easyjson.NewJSON(controllerUUID))
-		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, triggerCreateFunction, triggerID, &triggerCreatePayload, nil); err != nil {
+		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, controllerSubscriberUpdateFunction, self.ID, &updatePayload, nil); err != nil {
 			slog.Warn(err.Error())
 		}
 	} else {
@@ -90,10 +91,24 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 			}
 		}
 
-		if err := createLink(ctxProcessor, self.ID, caller.ID, "subscriber", easyjson.NewJSONObject().GetPtr(), caller.ID); err != nil {
-			slog.Error("Cannot create link", "error", err)
+		tx, err := beginTransaction(ctxProcessor, "full")
+		if err != nil {
+			slog.Warn(err.Error())
 			return
 		}
+
+		if err := tx.createObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
+			slog.Warn(err.Error())
+			return
+		}
+
+		if err := tx.commit(ctxProcessor); err != nil {
+			slog.Warn(err.Error())
+			return
+		}
+
+		controllerName, _ := object.GetByPath("name").AsString()
+		controllerUUID, _ := object.GetByPath("object_id").AsString()
 
 		if construct := object.GetByPath("construct"); construct.IsNonEmptyObject() {
 			path := fmt.Sprintf("payload.controllers.%s.%s", controllerName, controllerUUID)
@@ -105,22 +120,12 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 				slog.Warn(err.Error())
 			}
 		}
-
-		//subscribe on objects for update
-		triggerID := "trigger_" + controllerUUID
-		triggerCreatePayload := easyjson.NewJSONObject()
-		triggerCreatePayload.SetByPath("subscriber", easyjson.NewJSON(self.ID))
-		triggerCreatePayload.SetByPath("destination", easyjson.NewJSON(controllerUUID))
-
-		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, triggerCreateFunction, triggerID, &triggerCreatePayload, nil); err != nil {
-			slog.Warn(err.Error())
-		}
 	}
 
 	replyOk(ctxProcessor)
 }
 
-const controllerUnsubFunction = "functions.controller.unsub"
+const controllerUnsubFunction = "functions.client.controller.unsub"
 
 func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	caller := ctxProcessor.Caller
@@ -158,7 +163,58 @@ func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProce
 	replyOk(ctxProcessor)
 }
 
-const controllerConstructCreate = "functions.controller.construct.create"
+const controllerSubscriberUpdateFunction = "functions.client.controller.subscriber.update"
+
+func (h *statefunHandler) updateControllerSubscriber(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
+	self := ctxProcessor.Self
+
+	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, controllerSubscriberUpdateFunction)
+	if err != nil {
+		return
+	}
+
+	object := ctxProcessor.GetObjectContext()
+
+	defer func() {
+		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, controllerSubscriberUpdateFunction); err != nil {
+			slog.Warn("Key mutex unlock", "caller", controllerSubscriberUpdateFunction, "error", err)
+		}
+	}()
+
+	controllerName, _ := object.GetByPath("name").AsString()
+	controllerUUID, _ := object.GetByPath("object_id").AsString()
+	body := object.GetByPath("body") // declaration
+
+	result, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, controllerConstructCreate, controllerUUID, &body, nil)
+	if err != nil {
+		slog.Warn("Controller creation construct failed", "error", err)
+	}
+
+	newControllerConstruct := result.GetByPath("payload.result")
+	oldControllerConstruct := object.GetByPath("construct")
+
+	if oldControllerConstruct.IsNonEmptyObject() && newControllerConstruct.Equals(oldControllerConstruct) {
+		return
+	}
+
+	object.SetByPath("construct", newControllerConstruct)
+	ctxProcessor.SetObjectContext(object)
+
+	path := fmt.Sprintf("payload.controllers.%s.%s", controllerName, controllerUUID)
+
+	updateReply := easyjson.NewJSONObject()
+	updateReply.SetByPath(path, newControllerConstruct)
+
+	subscribers := getChildrenUUIDSByLinkType(ctxProcessor, self.ID, "subscriber")
+
+	for _, subID := range subscribers {
+		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, clientEgressFunction, subID, &updateReply, nil); err != nil {
+			slog.Warn(err.Error())
+		}
+	}
+}
+
+const controllerConstructCreate = "functions.client.controller.construct.create"
 
 /*
 @property:<json path>
@@ -180,95 +236,4 @@ func (h *statefunHandler) createControllerConstruct(_ sfplugins.StatefunExecutor
 	}
 
 	reply(ctxProcessor, "ok", decoratorsReply)
-}
-
-type controllerDecorator interface {
-	Invoke(ctx *sfplugins.StatefunContextProcessor) easyjson.JSON
-}
-
-type controllerProperty struct {
-	id   string
-	path string
-}
-
-func (c *controllerProperty) Invoke(ctx *sfplugins.StatefunContextProcessor) easyjson.JSON {
-	return ctx.GetObjectContext().GetByPath(c.path)
-}
-
-type controllerFunction struct {
-	id       string
-	function string
-	args     []string
-}
-
-func (c *controllerFunction) Invoke(ctx *sfplugins.StatefunContextProcessor) easyjson.JSON {
-	switch c.function {
-	case "getChildrenUUIDSByLinkType":
-		lt := ""
-		if len(c.args) > 0 {
-			lt = c.args[0]
-		}
-
-		children := getChildrenUUIDSByLinkType(ctx, c.id, lt)
-		return easyjson.NewJSON(children)
-	case "getOutLinkTypes":
-		outLinks := getOutLinkTypes(ctx, c.id)
-		return easyjson.NewJSON(outLinks)
-	}
-
-	return easyjson.NewJSONNull()
-}
-
-func parseDecorators(objectID string, payload *easyjson.JSON) map[string]controllerDecorator {
-	decorators := make(map[string]controllerDecorator)
-
-	for _, key := range payload.ObjectKeys() {
-		body := payload.GetByPath(key).AsStringDefault("")
-		tokens := strings.Split(body, ":")
-		if len(tokens) < 2 {
-			continue
-		}
-
-		decorator := tokens[0]
-		value := tokens[1]
-
-		switch decorator {
-		case _PROPERTY:
-			// TODO: add check value
-			decorators[key] = &controllerProperty{
-				id:   objectID,
-				path: value,
-			}
-		case _FUNCTION:
-			{
-				f, args, err := extractFunctionAndArgs(value)
-				if err != nil {
-					slog.Warn(err.Error())
-					continue
-				}
-
-				decorators[key] = &controllerFunction{
-					id:       objectID,
-					function: f,
-					args:     args,
-				}
-			}
-		default:
-			slog.Warn("parse decorator: unknown decorator", "decorator", decorator)
-		}
-	}
-
-	return decorators
-}
-
-func extractFunctionAndArgs(s string) (string, []string, error) {
-	split := strings.Split(strings.TrimRight(s, ")"), "(")
-	if len(split) != 2 {
-		return "", nil, fmt.Errorf("@function: invalid function format: %s", s)
-	}
-
-	funcName := split[0]
-	funcArgs := strings.Split(strings.TrimSpace(split[1]), ",")
-
-	return funcName, funcArgs, nil
 }

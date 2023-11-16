@@ -97,9 +97,9 @@ func replyOk(ctx *sfplugins.StatefunContextProcessor) {
 	reply(ctx, "ok", easyjson.NewJSONObject())
 }
 
-func replyError(ctx *sfplugins.StatefunContextProcessor, err error) {
-	reply(ctx, "failed", easyjson.NewJSON(err.Error()))
-}
+// func replyError(ctx *sfplugins.StatefunContextProcessor, err error) {
+// 	reply(ctx, "failed", easyjson.NewJSON(err.Error()))
+// }
 
 func reply(ctx *sfplugins.StatefunContextProcessor, status string, data easyjson.JSON) {
 	qid := common.GetQueryID(ctx)

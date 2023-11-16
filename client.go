@@ -3,6 +3,8 @@
 package uilib
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"time"
@@ -12,7 +14,7 @@ import (
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 )
 
-const clientIngressFunction = "ui.ingress"
+//const clientIngressFunction = "ui.ingress"
 
 /*
 Payload:
@@ -31,6 +33,10 @@ func (h *statefunHandler) initClient(_ sfplugins.StatefunExecutor, ctxProcessor 
 	id := ctxProcessor.Self.ID
 	payload := ctxProcessor.Payload
 	sessionID := generateSessionID(id)
+
+	if err := checkClientTypes(ctxProcessor); err != nil {
+		return
+	}
 
 	payload.SetByPath("client_id", easyjson.NewJSON(id))
 
@@ -62,17 +68,37 @@ func (h *statefunHandler) initSession(_ sfplugins.StatefunExecutor, ctxProcessor
 	params := ctxProcessor.GetObjectContext()
 
 	if !params.IsNonEmptyObject() {
-		createSessionPayload := easyjson.NewJSONObject()
-		createSessionPayload.SetByPath("session_id", easyjson.NewJSON(sessionID))
-		createSessionPayload.SetByPath("client_id", payload.GetByPath("client_id"))
+		now := time.Now().UnixNano()
 
-		result, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, sessionCreateFunction, "sessions", createSessionPayload.GetPtr(), nil)
+		body := easyjson.NewJSONObject()
+		body.SetByPath("life_time", easyjson.NewJSON(h.cfg.SessionLifeTime))
+		body.SetByPath("inactivity_timeout", easyjson.NewJSON(h.cfg.SessionInactivityTimeout.String()))
+		body.SetByPath("creation_time", easyjson.NewJSON(now))
+		body.SetByPath("last_activity_time", easyjson.NewJSON(now))
+		body.SetByPath("client_id", payload.GetByPath("client_id"))
+
+		tx, err := beginTransaction(ctxProcessor, "full")
 		if err != nil {
-			slog.Error("Session creation failed", "error", err)
+			slog.Warn(err.Error())
 			return
 		}
 
-		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, sessionAutoControlFunction, sessionID, result.GetByPath("result").GetPtr(), nil); err != nil {
+		if err := tx.createObject(ctxProcessor, sessionID, "session", &body); err != nil {
+			slog.Warn(err.Error())
+			return
+		}
+
+		if err := tx.createObjectsLink(ctxProcessor, "sessions_entrypoint", sessionID); err != nil {
+			slog.Warn(err.Error())
+			return
+		}
+
+		if err := tx.commit(ctxProcessor); err != nil {
+			slog.Warn(err.Error())
+			return
+		}
+
+		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, sessionAutoControlFunction, sessionID, &body, nil); err != nil {
 			slog.Warn(err.Error())
 		}
 	} else {
@@ -120,67 +146,19 @@ func (h *statefunHandler) clientEgress(_ sfplugins.StatefunExecutor, ctxProcesso
 	}
 }
 
-const sessionCreateFunction = "functions.client.session.create"
-
-/*
-Payload:
-
-	{
-		client_id: "id",
-	}
-*/
-func (h *statefunHandler) createSession(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
-	self := ctxProcessor.Self
-	payload := ctxProcessor.Payload
-
-	sessionID := payload.GetByPath("session_id").AsStringDefault("")
-	if sessionID == "" {
-		return
-	}
-
-	now := time.Now().UnixNano()
-
-	body := easyjson.NewJSONObject()
-	body.SetByPath("life_time", easyjson.NewJSON(h.cfg.SessionLifeTime))
-	body.SetByPath("inactivity_timeout", easyjson.NewJSON(h.cfg.SessionInactivityTimeout.String()))
-	body.SetByPath("creation_time", easyjson.NewJSON(now))
-	body.SetByPath("last_activity_time", easyjson.NewJSON(now))
-	body.SetByPath("client_id", payload.GetByPath("client_id"))
-
-	_, err := ctxProcessor.Request(sfplugins.GolangLocalRequest,
-		"functions.graph.ll.api.object.create",
-		sessionID,
-		easyjson.NewJSONObjectWithKeyValue("body", body).GetPtr(),
-		easyjson.NewJSONNull().GetPtr(),
-	)
-	if err != nil {
-		slog.Error("Creation session object failed", "error", err)
-		return
-	}
-
-	if err := createLink(ctxProcessor, self.ID, sessionID, "session", easyjson.NewJSONObject().GetPtr(), sessionID); err != nil {
-		slog.Error("Cannot create links between sessions and session", "session_id", sessionID, "error", err)
-		return
-	}
-
-	replyOk(ctxProcessor)
-}
-
 const sessionDeleteFunction = "functions.client.session.delete"
 
 func (h *statefunHandler) deleteSession(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
-	const op = "deleteSession"
-
 	self := ctxProcessor.Self
 
-	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, op)
+	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, sessionDeleteFunction)
 	if err != nil {
 		return
 	}
 
 	defer func() {
-		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, op); err != nil {
-			slog.Warn("Key mutex unlock", "caller", op, "error", err)
+		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, sessionDeleteFunction); err != nil {
+			slog.Warn("Key mutex unlock", "caller", sessionDeleteFunction, "error", err)
 		}
 	}()
 
@@ -342,7 +320,6 @@ func (h *statefunHandler) setSessionController(_ sfplugins.StatefunExecutor, ctx
 	payload := ctxProcessor.Payload
 
 	session := ctxProcessor.GetObjectContext()
-
 	if !session.IsNonEmptyObject() {
 		return
 	}
@@ -357,16 +334,20 @@ func (h *statefunHandler) setSessionController(_ sfplugins.StatefunExecutor, ctx
 
 		uuids, _ := controller.GetByPath("uuids").AsArrayString()
 		body := controller.GetByPath("body")
+
 		setupPayload := easyjson.NewJSONObjectWithKeyValue("body", body)
 
 		for _, uuid := range uuids {
 			// setup controller
-			typename := controllerName + "_" + sessionID + "_" + uuid
-			go func() {
-				if _, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, controllerSetupFunction, typename, &setupPayload, nil); err != nil {
-					slog.Warn("Controller setup failed", "error", err)
-				}
-			}()
+			typenameBytes := md5.Sum([]byte(controllerName + "_" + sessionID + "_" + uuid))
+			typename := hex.EncodeToString(typenameBytes[:])
+
+			setupPayload.SetByPath("name", easyjson.NewJSON(controllerName))
+			setupPayload.SetByPath("object_id", easyjson.NewJSON(uuid))
+
+			if _, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, controllerSetupFunction, typename, &setupPayload, nil); err != nil {
+				slog.Warn("Controller setup failed", "error", err)
+			}
 
 			linkExists := false
 
@@ -374,15 +355,69 @@ func (h *statefunHandler) setSessionController(_ sfplugins.StatefunExecutor, ctx
 			for _, v := range links {
 				if v == typename {
 					linkExists = true
+					break
 				}
 			}
 
 			if !linkExists {
 				// create link
-				if err := createLink(ctxProcessor, sessionID, typename, "controller", easyjson.NewJSONObject().GetPtr(), typename); err != nil {
-					slog.Warn("Cannot create link", "error", err)
+				tx, err := beginTransaction(ctxProcessor, "full")
+				if err != nil {
+					slog.Warn(err.Error())
+					return
+				}
+
+				if err := tx.createObjectsLink(ctxProcessor, sessionID, typename); err != nil {
+					slog.Warn(err.Error())
+					return
+				}
+
+				if err := tx.commit(ctxProcessor); err != nil {
+					slog.Warn(err.Error())
+					return
 				}
 			}
 		}
 	}
+}
+
+func checkClientTypes(ctx *sfplugins.StatefunContextProcessor) error {
+	tx, err := beginTransaction(ctx, "min")
+	if err != nil {
+		return err
+	}
+
+	if err := tx.createType(ctx, "session", easyjson.NewJSONObject().GetPtr()); err != nil {
+		return err
+	}
+
+	if err := tx.createType(ctx, "controller", easyjson.NewJSONObject().GetPtr()); err != nil {
+		return err
+	}
+
+	if err := tx.createTypesLink(ctx, "group", "session", "session"); err != nil {
+		return err
+	}
+
+	if err := tx.createTypesLink(ctx, "session", "controller", "controller"); err != nil {
+		return err
+	}
+
+	if err := tx.createTypesLink(ctx, "controller", "session", "subscriber"); err != nil {
+		return err
+	}
+
+	if err := tx.createObject(ctx, "sessions_entrypoint", "group", easyjson.NewJSONObject().GetPtr()); err != nil {
+		return err
+	}
+
+	if err := tx.createObjectsLink(ctx, "nav", "sessions_entrypoint"); err != nil {
+		return err
+	}
+
+	if err := tx.commit(ctx); err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -7,7 +7,6 @@ import (
 	"log/slog"
 
 	"github.com/foliagecp/easyjson"
-	"github.com/foliagecp/sdk/statefun"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 )
 
@@ -36,16 +35,8 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 	caller := ctxProcessor.Caller
 	payload := ctxProcessor.Payload
 
-	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, controllerSetupFunction)
-	if err != nil {
-		return
-	}
-
-	defer func() {
-		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, controllerSetupFunction); err != nil {
-			slog.Warn("Key mutex unlock", "caller", controllerSetupFunction, "error", err)
-		}
-	}()
+	ctxProcessor.ObjectMutexLock(false)
+	defer ctxProcessor.ObjectMutexUnlock()
 
 	object := ctxProcessor.GetObjectContext()
 	bodyIsEmpty := !object.GetByPath("body").IsNonEmptyObject()
@@ -57,24 +48,28 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 		controllerBody.SetByPath("object_id", payload.GetByPath("object_id"))
 		controllerBody.SetByPath("construct", easyjson.NewJSONObject())
 
-		tx, err := beginTransaction(ctxProcessor, "full")
+		tx, err := beginTransaction(ctxProcessor, generateTxID(self.ID), "with_types", _CONTROLLER_TYPE, _SESSION_TYPE)
 		if err != nil {
 			slog.Warn(err.Error())
+			replyError(ctxProcessor, err)
 			return
 		}
 
-		if err := tx.createObject(ctxProcessor, self.ID, "controller", &controllerBody); err != nil {
+		if err := tx.createObject(ctxProcessor, self.ID, _CONTROLLER_TYPE, &controllerBody); err != nil {
 			slog.Warn(err.Error())
+			replyError(ctxProcessor, err)
 			return
 		}
 
 		if err := tx.createObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
 			slog.Warn(err.Error())
+			replyError(ctxProcessor, err)
 			return
 		}
 
 		if err := tx.commit(ctxProcessor); err != nil {
 			slog.Warn(err.Error())
+			replyError(ctxProcessor, err)
 			return
 		}
 
@@ -83,27 +78,31 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 			slog.Warn(err.Error())
 		}
 	} else {
-		subscribers := getChildrenUUIDSByLinkType(ctxProcessor, self.ID, "subscriber")
+		subscribers := getChildrenUUIDSByLinkType(ctxProcessor, self.ID, _SUBSCRIBER_TYPE)
 
 		for _, v := range subscribers {
 			if v == caller.ID {
+				replyOk(ctxProcessor)
 				return
 			}
 		}
 
-		tx, err := beginTransaction(ctxProcessor, "full")
+		tx, err := beginTransaction(ctxProcessor, generateTxID(self.ID), "full")
 		if err != nil {
 			slog.Warn(err.Error())
+			replyError(ctxProcessor, err)
 			return
 		}
 
 		if err := tx.createObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
 			slog.Warn(err.Error())
+			replyError(ctxProcessor, err)
 			return
 		}
 
 		if err := tx.commit(ctxProcessor); err != nil {
 			slog.Warn(err.Error())
+			replyError(ctxProcessor, err)
 			return
 		}
 
@@ -131,36 +130,35 @@ func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProce
 	caller := ctxProcessor.Caller
 	self := ctxProcessor.Self
 
-	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, controllerUnsubFunction)
+	defer replyOk(ctxProcessor)
+
+	ctxProcessor.ObjectMutexLock(false)
+	defer ctxProcessor.ObjectMutexUnlock()
+
+	tx, err := beginTransaction(ctxProcessor, generateTxID(self.ID), "full")
 	if err != nil {
+		slog.Warn(err.Error())
 		return
 	}
 
-	defer func() {
-		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, controllerUnsubFunction); err != nil {
-			slog.Warn("Key mutex unlock", "caller", controllerUnsubFunction, "error", err)
-		}
-	}()
-
-	link := easyjson.NewJSONObject()
-	link.SetByPath("descendant_uuid", easyjson.NewJSON(caller.ID))
-	link.SetByPath("link_type", easyjson.NewJSON("subscriber"))
-
-	if _, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, "functions.graph.ll.api.link.delete", self.ID, &link, nil); err != nil {
-		slog.Warn("Cannot delete link", "error", err)
+	slog.Info("delete link", "from", self.ID, "to", caller.ID)
+	if err := tx.deleteObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
+		slog.Warn(err.Error())
 		return
 	}
 
-	subs := getChildrenUUIDSByLinkType(ctxProcessor, self.ID, "subscriber")
-	if len(subs) == 0 {
-		deleteObjectPayload := easyjson.NewJSONObject()
-		_, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, "functions.graph.ll.api.object.delete", self.ID, &deleteObjectPayload, nil)
-		if err != nil {
-			slog.Warn("Cannot delete object", "error", err)
-		}
+	slog.Info("delete link", "from", caller.ID, "to", self.ID)
+	if err := tx.deleteObjectsLink(ctxProcessor, caller.ID, self.ID); err != nil {
+		slog.Warn(err.Error())
+		return
 	}
 
-	replyOk(ctxProcessor)
+	if err := tx.commit(ctxProcessor); err != nil {
+		slog.Warn(err.Error())
+		return
+	}
+
+	// TODO: delete controller if there is no subs
 }
 
 const controllerSubscriberUpdateFunction = "functions.client.controller.subscriber.update"
@@ -168,18 +166,10 @@ const controllerSubscriberUpdateFunction = "functions.client.controller.subscrib
 func (h *statefunHandler) updateControllerSubscriber(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	self := ctxProcessor.Self
 
-	rev, err := statefun.KeyMutexLock(h.runtime, self.ID, false, controllerSubscriberUpdateFunction)
-	if err != nil {
-		return
-	}
+	ctxProcessor.ObjectMutexLock(false)
+	defer ctxProcessor.ObjectMutexUnlock()
 
 	object := ctxProcessor.GetObjectContext()
-
-	defer func() {
-		if err := statefun.KeyMutexUnlock(h.runtime, self.ID, rev, controllerSubscriberUpdateFunction); err != nil {
-			slog.Warn("Key mutex unlock", "caller", controllerSubscriberUpdateFunction, "error", err)
-		}
-	}()
 
 	controllerName, _ := object.GetByPath("name").AsString()
 	controllerUUID, _ := object.GetByPath("object_id").AsString()
@@ -205,7 +195,7 @@ func (h *statefunHandler) updateControllerSubscriber(_ sfplugins.StatefunExecuto
 	updateReply := easyjson.NewJSONObject()
 	updateReply.SetByPath(path, newControllerConstruct)
 
-	subscribers := getChildrenUUIDSByLinkType(ctxProcessor, self.ID, "subscriber")
+	subscribers := getChildrenUUIDSByLinkType(ctxProcessor, self.ID, _SUBSCRIBER_TYPE)
 
 	for _, subID := range subscribers {
 		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, clientEgressFunction, subID, &updateReply, nil); err != nil {
@@ -228,12 +218,12 @@ func (h *statefunHandler) createControllerConstruct(_ sfplugins.StatefunExecutor
 	payload := ctxProcessor.Payload
 
 	decorators := parseDecorators(objectID, payload)
-	decoratorsReply := easyjson.NewJSONObject()
+	construct := easyjson.NewJSONObject()
 
 	for key, cd := range decorators {
 		result := cd.Invoke(ctxProcessor)
-		decoratorsReply.SetByPath(key, result)
+		construct.SetByPath(key, result)
 	}
 
-	reply(ctxProcessor, "ok", decoratorsReply)
+	reply(ctxProcessor, "ok", construct)
 }

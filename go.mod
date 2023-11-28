@@ -4,7 +4,8 @@ go 1.21.0
 
 require (
 	github.com/foliagecp/easyjson v0.1.0
-	github.com/foliagecp/sdk v0.1.3-0.20231114153435-a405d0fd7424
+	github.com/foliagecp/sdk v0.1.3-0.20231124114101-7d4db98dae8b
+	github.com/google/uuid v1.4.0
 )
 
 require (

@@ -37,13 +37,13 @@ func (c *controllerFunction) Invoke(ctx *sfplugins.StatefunContextProcessor) eas
 		}
 
 		children := getChildrenUUIDSByLinkType(ctx, c.id, lt)
-		return easyjson.NewJSON(children)
+		return easyjson.JSONFromArray(children)
 	case "getOutLinkTypes":
-		outLinks := getOutLinkTypes(ctx, c.id)
-		return easyjson.NewJSON(outLinks)
+		out := getOutLinkTypes(ctx, c.id)
+		return easyjson.JSONFromArray(out)
 	}
 
-	return easyjson.NewJSONNull()
+	return easyjson.NewJSONObject()
 }
 
 func parseDecorators(objectID string, payload *easyjson.JSON) map[string]controllerDecorator {

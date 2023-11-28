@@ -3,6 +3,7 @@
 package uilib
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -89,17 +90,25 @@ func getChildrenUUIDSByLinkType(ctx *sfplugins.StatefunContextProcessor, uuid, f
 	return result
 }
 
-func generateSessionID(id string) string {
-	return "session_client_" + id
-}
-
 func replyOk(ctx *sfplugins.StatefunContextProcessor) {
 	reply(ctx, "ok", easyjson.NewJSONObject())
 }
 
-// func replyError(ctx *sfplugins.StatefunContextProcessor, err error) {
-// 	reply(ctx, "failed", easyjson.NewJSON(err.Error()))
-// }
+func replyError(ctx *sfplugins.StatefunContextProcessor, err error) {
+	reply(ctx, "failed", easyjson.NewJSON(err.Error()))
+}
+
+func checkRequestError(result *easyjson.JSON, err error) error {
+	if err != nil {
+		return err
+	}
+
+	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
+		return errors.New(result.GetByPath("payload.result").AsStringDefault("unknown error"))
+	}
+
+	return nil
+}
 
 func reply(ctx *sfplugins.StatefunContextProcessor, status string, data easyjson.JSON) {
 	qid := common.GetQueryID(ctx)

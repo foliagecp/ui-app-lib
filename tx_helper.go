@@ -1,7 +1,6 @@
 package uilib
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/foliagecp/easyjson"
@@ -9,41 +8,40 @@ import (
 )
 
 const (
-	_TX_BEGIN               = "functions.graph.tx.begin"
-	_TX_CREATE_OBJECT       = "functions.graph.tx.object.create"
-	_TX_CREATE_TYPE         = "functions.graph.tx.type.create"
-	_TX_CREATE_OBJECTS_LINK = "functions.graph.tx.objects.link.create"
-	_TX_CREATE_TYPES_LINK   = "functions.graph.tx.types.link.create"
-	_TX_UPDATE_OBJECT       = "functions.graph.tx.object.update"
-	_TX_DELETE_OBJECT       = "functions.graph.tx.object.delete"
-	_TX_DELETE_OBJECTS_LINK = "functions.graph.tx.objects.link.delete"
-	_TX_COMMIT              = "functions.graph.tx.commit"
+	_TX_BEGIN               = "functions.cmdb.tx.begin"
+	_TX_CLONE               = "functions.cmdb.tx.clone"
+	_TX_CREATE_OBJECT       = "functions.cmdb.tx.object.create"
+	_TX_CREATE_TYPE         = "functions.cmdb.tx.type.create"
+	_TX_CREATE_OBJECTS_LINK = "functions.cmdb.tx.objects.link.create"
+	_TX_CREATE_TYPES_LINK   = "functions.cmdb.tx.types.link.create"
+	_TX_UPDATE_OBJECT       = "functions.cmdb.tx.object.update"
+	_TX_DELETE_OBJECT       = "functions.cmdb.tx.object.delete"
+	_TX_DELETE_OBJECTS_LINK = "functions.cmdb.tx.objects.link.delete"
+	_TX_COMMIT              = "functions.cmdb.tx.commit"
 )
 
 type txHelper struct {
 	id string
 }
 
-func beginTransaction(ctx *sf.StatefunContextProcessor, mode string, types ...string) (*txHelper, error) {
+func beginTransaction(ctx *sf.StatefunContextProcessor, id, mode string, types ...string) (*txHelper, error) {
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("clone", easyjson.NewJSON(mode))
 	if mode == "with_types" && len(types) > 0 {
-		payload.SetByPath("types", easyjson.JSONFromArray[string](types))
+		payload.SetByPath("types", easyjson.JSONFromArray(types))
 	}
 
-	result, err := ctx.Request(sf.NatsCoreGlobalRequest, _TX_BEGIN, "txmaster", &payload, nil)
+	result, err := ctx.Request(sf.NatsCoreGlobalRequest, _TX_BEGIN, id, &payload, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 
-	txID := result.GetByPath("payload.id").AsStringDefault("")
-
-	if txID == "" {
-		return nil, errors.New("empty tx id")
+	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
+		return nil, fmt.Errorf("%v", result.GetByPath("payload.result"))
 	}
 
 	return &txHelper{
-		id: txID,
+		id: id,
 	}, nil
 }
 
@@ -198,7 +196,7 @@ func (t *txHelper) deleteObject(ctx *sf.StatefunContextProcessor, id string) err
 func (t *txHelper) deleteObjectsLink(ctx *sf.StatefunContextProcessor, from, to string) error {
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("from", easyjson.NewJSON(from))
-	payload.SetByPath("to", easyjson.NewJSON(from))
+	payload.SetByPath("to", easyjson.NewJSON(to))
 
 	result, err := ctx.Request(sf.NatsCoreGlobalRequest, _TX_DELETE_OBJECTS_LINK, t.id, &payload, nil)
 	if err != nil {

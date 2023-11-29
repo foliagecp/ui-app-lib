@@ -5,6 +5,7 @@ package uilib
 import (
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/foliagecp/easyjson"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
@@ -35,8 +36,8 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 	caller := ctxProcessor.Caller
 	payload := ctxProcessor.Payload
 
-	ctxProcessor.ObjectMutexLock(false)
-	defer ctxProcessor.ObjectMutexUnlock()
+	// ctxProcessor.ObjectMutexLock(false)
+	// defer ctxProcessor.ObjectMutexUnlock()
 
 	object := ctxProcessor.GetObjectContext()
 	bodyIsEmpty := !object.GetByPath("body").IsNonEmptyObject()
@@ -47,6 +48,8 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 		controllerBody.SetByPath("name", payload.GetByPath("name"))
 		controllerBody.SetByPath("object_id", payload.GetByPath("object_id"))
 		controllerBody.SetByPath("construct", easyjson.NewJSONObject())
+
+		start := time.Now()
 
 		tx, err := beginTransaction(ctxProcessor, generateTxID(self.ID), "with_types", _CONTROLLER_TYPE, _SESSION_TYPE)
 		if err != nil {
@@ -73,6 +76,10 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 			return
 		}
 
+		if time.Since(start).Milliseconds() > 500 {
+			slog.Warn("create controller", "ctrl_id", self.ID, "dt", time.Since(start))
+		}
+
 		updatePayload := easyjson.NewJSONObject()
 		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, controllerSubscriberUpdateFunction, self.ID, &updatePayload, nil); err != nil {
 			slog.Warn(err.Error())
@@ -87,7 +94,7 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 			}
 		}
 
-		tx, err := beginTransaction(ctxProcessor, generateTxID(self.ID), "full")
+		tx, err := beginTransaction(ctxProcessor, generateTxID(self.ID), "with_types", _CONTROLLER_TYPE, _SESSION_TYPE)
 		if err != nil {
 			slog.Warn(err.Error())
 			replyError(ctxProcessor, err)
@@ -132,22 +139,20 @@ func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProce
 
 	defer replyOk(ctxProcessor)
 
-	ctxProcessor.ObjectMutexLock(false)
-	defer ctxProcessor.ObjectMutexUnlock()
+	// ctxProcessor.ObjectMutexLock(false)
+	// defer ctxProcessor.ObjectMutexUnlock()
 
-	tx, err := beginTransaction(ctxProcessor, generateTxID(self.ID), "full")
+	tx, err := beginTransaction(ctxProcessor, generateTxID(self.ID), "with_types", _CONTROLLER_TYPE, _SESSION_TYPE)
 	if err != nil {
 		slog.Warn(err.Error())
 		return
 	}
 
-	slog.Info("delete link", "from", self.ID, "to", caller.ID)
 	if err := tx.deleteObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
 		slog.Warn(err.Error())
 		return
 	}
 
-	slog.Info("delete link", "from", caller.ID, "to", self.ID)
 	if err := tx.deleteObjectsLink(ctxProcessor, caller.ID, self.ID); err != nil {
 		slog.Warn(err.Error())
 		return
@@ -166,8 +171,8 @@ const controllerSubscriberUpdateFunction = "functions.client.controller.subscrib
 func (h *statefunHandler) updateControllerSubscriber(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	self := ctxProcessor.Self
 
-	ctxProcessor.ObjectMutexLock(false)
-	defer ctxProcessor.ObjectMutexUnlock()
+	// ctxProcessor.ObjectMutexLock(false)
+	// defer ctxProcessor.ObjectMutexUnlock()
 
 	object := ctxProcessor.GetObjectContext()
 
@@ -178,12 +183,19 @@ func (h *statefunHandler) updateControllerSubscriber(_ sfplugins.StatefunExecuto
 	result, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, controllerConstructCreate, controllerUUID, &body, nil)
 	if err != nil {
 		slog.Warn("Controller creation construct failed", "error", err)
+		result = easyjson.NewJSONObject().GetPtr()
 	}
 
 	newControllerConstruct := result.GetByPath("payload.result")
 	oldControllerConstruct := object.GetByPath("construct")
 
-	if oldControllerConstruct.IsNonEmptyObject() && newControllerConstruct.Equals(oldControllerConstruct) {
+	if !newControllerConstruct.IsNonEmptyObject() {
+		return
+	}
+
+	if oldControllerConstruct.IsNonEmptyObject() &&
+		newControllerConstruct.IsNonEmptyObject() &&
+		newControllerConstruct.Equals(oldControllerConstruct) {
 		return
 	}
 

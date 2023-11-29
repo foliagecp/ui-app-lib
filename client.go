@@ -29,7 +29,7 @@ Payload:
 func (h *statefunHandler) initClient(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	id := ctxProcessor.Self.ID
 	payload := ctxProcessor.Payload
-	sessionID := generateSessionID(id)
+	sessionID := generateSessionID(id) // uuid
 
 	if err := checkClientTypes(ctxProcessor); err != nil {
 		slog.Warn(err.Error())
@@ -97,7 +97,9 @@ func (h *statefunHandler) initSession(_ sfplugins.StatefunExecutor, ctxProcessor
 			return
 		}
 
-		slog.Info("session create", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(now))
+		if time.Since(now).Seconds() > 1 {
+			slog.Warn("session create", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(now))
+		}
 	}
 
 	if payload.PathExists("command") {
@@ -145,8 +147,8 @@ const sessionDeleteFunction = "functions.client.session.delete"
 func (h *statefunHandler) deleteSession(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	self := ctxProcessor.Self
 
-	ctxProcessor.ObjectMutexLock(false)
-	defer ctxProcessor.ObjectMutexUnlock()
+	// ctxProcessor.ObjectMutexLock(false)
+	// defer ctxProcessor.ObjectMutexUnlock()
 
 	deleteObjectPayload := easyjson.NewJSONObject()
 	if _, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, "functions.graph.ll.api.object.delete", self.ID, &deleteObjectPayload, nil); err != nil {
@@ -269,7 +271,9 @@ func (h *statefunHandler) setSessionController(_ sfplugins.StatefunExecutor, ctx
 				continue
 			}
 
-			slog.Info("client setup controller", "id", sessionID, "ctrl_id", controllerID.String(), "dt", time.Since(start))
+			if time.Since(start).Milliseconds() > 500 {
+				slog.Warn("client setup controller", "id", sessionID, "ctrl_id", controllerID.String(), "dt", time.Since(start))
+			}
 
 			linkExists := false
 
@@ -283,7 +287,7 @@ func (h *statefunHandler) setSessionController(_ sfplugins.StatefunExecutor, ctx
 
 			if !linkExists {
 				// create link
-				tx, err := beginTransaction(ctxProcessor, generateTxID(sessionID), "full")
+				tx, err := beginTransaction(ctxProcessor, generateTxID(sessionID), "with_types", _CONTROLLER_TYPE, _SESSION_TYPE)
 				if err != nil {
 					slog.Warn(err.Error())
 					continue

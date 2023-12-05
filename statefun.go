@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	_SESSION_TYPE       = "session"
-	_CONTROLLER_TYPE    = "controller"
-	_SUBSCRIBER_TYPE    = "subscriber"
+	_SESSION_TYPE       = "ui_session"
+	_CONTROLLER_TYPE    = "ui_controller"
+	_SUBSCRIBER_TYPE    = "ui_subscriber"
 	_SESSIONS_ENTYPOINT = "sessions_entrypoint"
 )
 
@@ -39,5 +39,5 @@ func RegisterAllFunctionTypes(runtime *statefun.Runtime, opts ...UIOpt) {
 	statefun.NewFunctionType(runtime, controllerSetupFunction, h.setupController, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, controllerUnsubFunction, h.unsubController, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, controllerConstructCreate, h.createControllerConstruct, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, controllerSubscriberUpdateFunction, h.updateControllerSubscriber, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, controllerSubscriberUpdateFunction, h.updateControllerSubscriber, *statefun.NewFunctionTypeConfig().SetMsgAckWaitMs(20000))
 }

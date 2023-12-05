@@ -43,6 +43,8 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 	bodyIsEmpty := !object.GetByPath("body").IsNonEmptyObject()
 
 	if bodyIsEmpty {
+		objectUUID := payload.GetByPath("object_id").AsStringDefault("")
+
 		controllerBody := easyjson.NewJSONObject()
 		controllerBody.SetByPath("body", payload.GetByPath("body"))
 		controllerBody.SetByPath("name", payload.GetByPath("name"))
@@ -51,12 +53,23 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 
 		start := time.Now()
 
-		tx, err := beginTransaction(ctxProcessor, generateTxID(self.ID), "with_types", _CONTROLLER_TYPE, _SESSION_TYPE)
+		m := map[string]beginTxType{
+			_SESSION_TYPE: {
+				Mode:    "only",
+				Objects: map[string]struct{}{caller.ID: {}},
+			},
+			_CONTROLLER_TYPE: {
+				Mode: "none",
+			},
+		}
+		tx, err := beginTransactionWithTypes(ctxProcessor, pool.GetTxID(), m)
 		if err != nil {
 			slog.Warn(err.Error())
 			replyError(ctxProcessor, err)
 			return
 		}
+
+		//slog.Warn("begin tx", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(begin))
 
 		if err := tx.createObject(ctxProcessor, self.ID, _CONTROLLER_TYPE, &controllerBody); err != nil {
 			slog.Warn(err.Error())
@@ -80,6 +93,8 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 			slog.Warn("create controller", "ctrl_id", self.ID, "dt", time.Since(start))
 		}
 
+		go createLink(ctxProcessor, self.ID, objectUUID, "controller_sub", easyjson.NewJSONObject().GetPtr())
+
 		updatePayload := easyjson.NewJSONObject()
 		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, controllerSubscriberUpdateFunction, self.ID, &updatePayload, nil); err != nil {
 			slog.Warn(err.Error())
@@ -94,12 +109,23 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 			}
 		}
 
-		tx, err := beginTransaction(ctxProcessor, generateTxID(self.ID), "with_types", _CONTROLLER_TYPE, _SESSION_TYPE)
+		m := map[string]beginTxType{
+			_SESSION_TYPE: {
+				Mode:    "only",
+				Objects: map[string]struct{}{caller.ID: {}},
+			},
+			_CONTROLLER_TYPE: {
+				Mode:    "only",
+				Objects: map[string]struct{}{self.ID: {}},
+			},
+		}
+		tx, err := beginTransactionWithTypes(ctxProcessor, pool.GetTxID(), m)
 		if err != nil {
 			slog.Warn(err.Error())
-			replyError(ctxProcessor, err)
 			return
 		}
+
+		//slog.Warn("begin tx", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(begin))
 
 		if err := tx.createObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
 			slog.Warn(err.Error())
@@ -141,8 +167,22 @@ func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProce
 
 	// ctxProcessor.ObjectMutexLock(false)
 	// defer ctxProcessor.ObjectMutexUnlock()
+	m := map[string]beginTxType{
+		_SESSION_TYPE: {
+			Mode: "only",
+			Objects: map[string]struct{}{
+				caller.ID: {},
+			},
+		},
+		_CONTROLLER_TYPE: {
+			Mode: "only",
+			Objects: map[string]struct{}{
+				self.ID: {},
+			},
+		},
+	}
 
-	tx, err := beginTransaction(ctxProcessor, generateTxID(self.ID), "with_types", _CONTROLLER_TYPE, _SESSION_TYPE)
+	tx, err := beginTransactionWithTypes(ctxProcessor, pool.GetTxID(), m)
 	if err != nil {
 		slog.Warn(err.Error())
 		return

@@ -14,7 +14,7 @@ import (
 )
 
 func createLink(ctx *sfplugins.StatefunContextProcessor, from, to, linkType string, body *easyjson.JSON, tags ...string) error {
-	const op = "functions.graph.ll.api.link.create"
+	const op = "functions.graph.api.link.create"
 
 	link := easyjson.NewJSONObject()
 	link.SetByPath("descendant_uuid", easyjson.NewJSON(to))

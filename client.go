@@ -9,9 +9,11 @@ import (
 
 	"github.com/foliagecp/easyjson"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
-//const clientIngressFunction = "ui.ingress"
+// const clientIngressFunction = "ui.ingress"
+var sessionTxID = "80afc12b878f4f02d00e6d54d904709a"
 
 /*
 Payload:
@@ -76,30 +78,48 @@ func (h *statefunHandler) initSession(_ sfplugins.StatefunExecutor, ctxProcessor
 		body.SetByPath("client_id", payload.GetByPath("client_id"))
 
 		// clone part of graph
-		tx, err := beginTransaction(ctxProcessor, generateTxID(sessionID), "with_types", _SESSION_TYPE, "group")
+		//begin := time.Now()
+		m := map[string]beginTxType{
+			_SESSION_TYPE: {
+				Mode: "none",
+			},
+			"group": {
+				Mode: "all",
+			},
+		}
+		tx, err := beginTransactionWithTypes(ctxProcessor, pool.GetTxID(), m)
 		if err != nil {
 			slog.Warn(err.Error())
 			return
 		}
+		//slog.Warn("begin tx", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(begin))
 
+		//createObj := time.Now()
 		if err := tx.createObject(ctxProcessor, sessionID, _SESSION_TYPE, &body); err != nil {
 			slog.Warn(err.Error())
 			return
 		}
+		//slog.Warn("create vertex", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(createObj))
 
+		//createLink := time.Now()
 		if err := tx.createObjectsLink(ctxProcessor, _SESSIONS_ENTYPOINT, sessionID); err != nil {
 			slog.Warn(err.Error())
 			return
 		}
+		//slog.Warn("create link", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(createLink))
 
+		//commit := time.Now()
 		if err := tx.commit(ctxProcessor); err != nil {
 			slog.Warn(err.Error())
 			return
 		}
+		//slog.Warn("commit", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(commit))
 
 		if time.Since(now).Seconds() > 1 {
 			slog.Warn("session create", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(now))
 		}
+
+		SessionCreationTime.With(prometheus.Labels{"session": sessionID}).Observe(float64(time.Since(now).Milliseconds()))
 	}
 
 	if payload.PathExists("command") {
@@ -259,7 +279,7 @@ func (h *statefunHandler) setSessionController(_ sfplugins.StatefunExecutor, ctx
 
 		for _, uuid := range uuids {
 			// setup controller
-			controllerID := generateUUID(controllerName + sessionID + uuid + body.ToString())
+			controllerID := generateUUID(controllerName + uuid + body.ToString())
 
 			setupPayload.SetByPath("name", easyjson.NewJSON(controllerName))
 			setupPayload.SetByPath("object_id", easyjson.NewJSON(uuid))
@@ -287,10 +307,25 @@ func (h *statefunHandler) setSessionController(_ sfplugins.StatefunExecutor, ctx
 
 			if !linkExists {
 				// create link
-				tx, err := beginTransaction(ctxProcessor, generateTxID(sessionID), "with_types", _CONTROLLER_TYPE, _SESSION_TYPE)
+				m := map[string]beginTxType{
+					_SESSION_TYPE: {
+						Mode: "only",
+						Objects: map[string]struct{}{
+							sessionID: {},
+						},
+					},
+					_CONTROLLER_TYPE: {
+						Mode: "only",
+						Objects: map[string]struct{}{
+							controllerID.String(): {},
+						},
+					},
+				}
+
+				tx, err := beginTransactionWithTypes(ctxProcessor, pool.GetTxID(), m)
 				if err != nil {
 					slog.Warn(err.Error())
-					continue
+					return
 				}
 
 				if err := tx.createObjectsLink(ctxProcessor, sessionID, controllerID.String()); err != nil {
@@ -332,36 +367,12 @@ func checkClientTypes(ctx *sfplugins.StatefunContextProcessor) error {
 		return nil
 	}
 
-	tx, err := beginTransaction(ctx, generateTxID("uilib_init_types"), "min")
+	tx, err := beginTransaction(ctx, pool.GetTxID(), "min")
 	if err != nil {
 		return err
 	}
 
-	if err := tx.createType(ctx, _SESSION_TYPE, easyjson.NewJSONObject().GetPtr()); err != nil {
-		return err
-	}
-
-	if err := tx.createType(ctx, _CONTROLLER_TYPE, easyjson.NewJSONObject().GetPtr()); err != nil {
-		return err
-	}
-
-	if err := tx.createTypesLink(ctx, "group", _SESSION_TYPE, _SESSION_TYPE); err != nil {
-		return err
-	}
-
-	if err := tx.createTypesLink(ctx, _SESSION_TYPE, _CONTROLLER_TYPE, _CONTROLLER_TYPE); err != nil {
-		return err
-	}
-
-	if err := tx.createTypesLink(ctx, _CONTROLLER_TYPE, _SESSION_TYPE, _SUBSCRIBER_TYPE); err != nil {
-		return err
-	}
-
-	if err := tx.createObject(ctx, _SESSIONS_ENTYPOINT, "group", easyjson.NewJSONObject().GetPtr()); err != nil {
-		return err
-	}
-
-	if err := tx.createObjectsLink(ctx, "nav", _SESSIONS_ENTYPOINT); err != nil {
+	if err := tx.initTypes(ctx); err != nil {
 		return err
 	}
 

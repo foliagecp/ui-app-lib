@@ -24,14 +24,35 @@ type txHelper struct {
 	id string
 }
 
-func beginTransaction(ctx *sf.StatefunContextProcessor, id, mode string, types ...string) (*txHelper, error) {
+type beginTxType struct {
+	Mode    string              `json:"mode"`
+	Objects map[string]struct{} `json:"objects,omitempty"`
+}
+
+func beginTransaction(ctx *sf.StatefunContextProcessor, id, mode string) (*txHelper, error) {
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("clone", easyjson.NewJSON(mode))
-	if mode == "with_types" && len(types) > 0 {
-		payload.SetByPath("types", easyjson.JSONFromArray(types))
+
+	result, err := ctx.Request(sf.GolangLocalRequest, _TX_BEGIN, id, &payload, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 
-	result, err := ctx.Request(sf.NatsCoreGlobalRequest, _TX_BEGIN, id, &payload, nil)
+	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
+		return nil, fmt.Errorf("%v", result.GetByPath("payload.result"))
+	}
+
+	return &txHelper{
+		id: id,
+	}, nil
+}
+
+func beginTransactionWithTypes(ctx *sf.StatefunContextProcessor, id string, types map[string]beginTxType) (*txHelper, error) {
+	payload := easyjson.NewJSONObject()
+	payload.SetByPath("clone", easyjson.NewJSON("with_types"))
+	payload.SetByPath("types", easyjson.NewJSON(types))
+
+	result, err := ctx.Request(sf.GolangLocalRequest, _TX_BEGIN, id, &payload, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
@@ -52,7 +73,7 @@ func (t *txHelper) commit(ctx *sf.StatefunContextProcessor, mode ...string) erro
 		payload.SetByPath("mode", easyjson.NewJSON(mode[0]))
 	}
 
-	result, err := ctx.Request(sf.NatsCoreGlobalRequest, _TX_COMMIT, t.id, &payload, nil)
+	result, err := ctx.Request(sf.GolangLocalRequest, _TX_COMMIT, t.id, &payload, nil)
 	if err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
@@ -92,7 +113,7 @@ func (t *txHelper) createObjectsLink(ctx *sf.StatefunContextProcessor, from, to 
 	payload.SetByPath("from", easyjson.NewJSON(from))
 	payload.SetByPath("to", easyjson.NewJSON(to))
 
-	result, err := ctx.Request(sf.NatsCoreGlobalRequest, _TX_CREATE_OBJECTS_LINK, t.id, &payload, nil)
+	result, err := ctx.Request(sf.GolangLocalRequest, _TX_CREATE_OBJECTS_LINK, t.id, &payload, nil)
 	if err != nil {
 		return err
 	}
@@ -110,7 +131,7 @@ func (t *txHelper) createTypesLink(ctx *sf.StatefunContextProcessor, from, to, o
 	payload.SetByPath("to", easyjson.NewJSON(to))
 	payload.SetByPath("object_link_type", easyjson.NewJSON(objectLinkType))
 
-	result, err := ctx.Request(sf.NatsCoreGlobalRequest, _TX_CREATE_TYPES_LINK, t.id, &payload, nil)
+	result, err := ctx.Request(sf.GolangLocalRequest, _TX_CREATE_TYPES_LINK, t.id, &payload, nil)
 	if err != nil {
 		return err
 	}
@@ -128,7 +149,7 @@ func (t *txHelper) createObject(ctx *sf.StatefunContextProcessor, objectID, orig
 	payload.SetByPath("origin_type", easyjson.NewJSON(originType))
 	payload.SetByPath("body", *body)
 
-	result, err := ctx.Request(sf.NatsCoreGlobalRequest, _TX_CREATE_OBJECT, t.id, &payload, nil)
+	result, err := ctx.Request(sf.GolangLocalRequest, _TX_CREATE_OBJECT, t.id, &payload, nil)
 	if err != nil {
 		return err
 	}
@@ -148,7 +169,7 @@ func (t *txHelper) updateObject(ctx *sf.StatefunContextProcessor, objectID strin
 		payload.SetByPath("mode", easyjson.NewJSON(mode))
 	}
 
-	result, err := ctx.Request(sf.NatsCoreGlobalRequest, _TX_UPDATE_OBJECT, t.id, &payload, nil)
+	result, err := ctx.Request(sf.GolangLocalRequest, _TX_UPDATE_OBJECT, t.id, &payload, nil)
 	if err != nil {
 		return err
 	}
@@ -165,7 +186,7 @@ func (t *txHelper) createType(ctx *sf.StatefunContextProcessor, typeID string, b
 	payload.SetByPath("id", easyjson.NewJSON(typeID))
 	payload.SetByPath("body", *body)
 
-	result, err := ctx.Request(sf.NatsCoreGlobalRequest, _TX_CREATE_TYPE, t.id, &payload, nil)
+	result, err := ctx.Request(sf.GolangLocalRequest, _TX_CREATE_TYPE, t.id, &payload, nil)
 	if err != nil {
 		return err
 	}
@@ -181,7 +202,7 @@ func (t *txHelper) deleteObject(ctx *sf.StatefunContextProcessor, id string) err
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("id", easyjson.NewJSON(id))
 
-	result, err := ctx.Request(sf.NatsCoreGlobalRequest, _TX_DELETE_OBJECT, t.id, &payload, nil)
+	result, err := ctx.Request(sf.GolangLocalRequest, _TX_DELETE_OBJECT, t.id, &payload, nil)
 	if err != nil {
 		return err
 	}
@@ -198,13 +219,45 @@ func (t *txHelper) deleteObjectsLink(ctx *sf.StatefunContextProcessor, from, to 
 	payload.SetByPath("from", easyjson.NewJSON(from))
 	payload.SetByPath("to", easyjson.NewJSON(to))
 
-	result, err := ctx.Request(sf.NatsCoreGlobalRequest, _TX_DELETE_OBJECTS_LINK, t.id, &payload, nil)
+	result, err := ctx.Request(sf.GolangLocalRequest, _TX_DELETE_OBJECTS_LINK, t.id, &payload, nil)
 	if err != nil {
 		return err
 	}
 
 	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
 		return fmt.Errorf("%v", result.GetByPath("payload.result"))
+	}
+
+	return nil
+}
+
+func (tx *txHelper) initTypes(ctx *sf.StatefunContextProcessor) error {
+	if err := tx.createType(ctx, _SESSION_TYPE, easyjson.NewJSONObject().GetPtr()); err != nil {
+		return err
+	}
+
+	if err := tx.createType(ctx, _CONTROLLER_TYPE, easyjson.NewJSONObject().GetPtr()); err != nil {
+		return err
+	}
+
+	if err := tx.createTypesLink(ctx, "group", _SESSION_TYPE, _SESSION_TYPE); err != nil {
+		return err
+	}
+
+	if err := tx.createTypesLink(ctx, _SESSION_TYPE, _CONTROLLER_TYPE, _CONTROLLER_TYPE); err != nil {
+		return err
+	}
+
+	if err := tx.createTypesLink(ctx, _CONTROLLER_TYPE, _SESSION_TYPE, _SUBSCRIBER_TYPE); err != nil {
+		return err
+	}
+
+	if err := tx.createObject(ctx, _SESSIONS_ENTYPOINT, "group", easyjson.NewJSONObject().GetPtr()); err != nil {
+		return err
+	}
+
+	if err := tx.createObjectsLink(ctx, "nav", _SESSIONS_ENTYPOINT); err != nil {
+		return err
 	}
 
 	return nil

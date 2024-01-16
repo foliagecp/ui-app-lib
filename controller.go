@@ -5,10 +5,13 @@ package uilib
 import (
 	"fmt"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/foliagecp/easyjson"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
+	"github.com/foliagecp/sdk/statefun/system"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -53,47 +56,29 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 
 		start := time.Now()
 
-		m := map[string]beginTxType{
-			_SESSION_TYPE: {
-				Mode:    "only",
-				Objects: map[string]struct{}{caller.ID: {}},
-			},
-			_CONTROLLER_TYPE: {
-				Mode: "none",
-			},
-		}
-		tx, err := beginTransactionWithTypes(ctxProcessor, pool.GetTxID(), m)
-		if err != nil {
+		if err := createObject(ctxProcessor, self.ID, _CONTROLLER_TYPE, &controllerBody); err != nil {
 			slog.Warn(err.Error())
 			replyError(ctxProcessor, err)
 			return
 		}
 
-		//slog.Warn("begin tx", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(begin))
-
-		if err := tx.createObject(ctxProcessor, self.ID, _CONTROLLER_TYPE, &controllerBody); err != nil {
+		if err := createObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
 			slog.Warn(err.Error())
 			replyError(ctxProcessor, err)
 			return
 		}
 
-		if err := tx.createObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
-			slog.Warn(err.Error())
-			replyError(ctxProcessor, err)
-			return
-		}
-
-		if err := tx.commit(ctxProcessor); err != nil {
-			slog.Warn(err.Error())
-			replyError(ctxProcessor, err)
-			return
+		if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_creation_time", "", []string{"id"}); err == nil {
+			gaugeVec.With(prometheus.Labels{"id": self.ID}).Set(float64(time.Since(start).Microseconds()))
 		}
 
 		if time.Since(start).Milliseconds() > 500 {
 			slog.Warn("create controller", "ctrl_id", self.ID, "dt", time.Since(start))
 		}
 
-		go createLink(ctxProcessor, self.ID, objectUUID, "controller_sub", easyjson.NewJSONObject().GetPtr())
+		triggerPayload := easyjson.NewJSONObject()
+		triggerPayload.SetByPath("body.triggers.update", easyjson.JSONFromArray([]string{controllerSubscriberUpdateFunction}))
+		ctxProcessor.Request(sfplugins.GolangLocalRequest, "functions.cmdb.api.object.update", objectUUID, &triggerPayload, nil)
 
 		updatePayload := easyjson.NewJSONObject()
 		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, controllerSubscriberUpdateFunction, self.ID, &updatePayload, nil); err != nil {
@@ -109,31 +94,7 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 			}
 		}
 
-		m := map[string]beginTxType{
-			_SESSION_TYPE: {
-				Mode:    "only",
-				Objects: map[string]struct{}{caller.ID: {}},
-			},
-			_CONTROLLER_TYPE: {
-				Mode:    "only",
-				Objects: map[string]struct{}{self.ID: {}},
-			},
-		}
-		tx, err := beginTransactionWithTypes(ctxProcessor, pool.GetTxID(), m)
-		if err != nil {
-			slog.Warn(err.Error())
-			return
-		}
-
-		//slog.Warn("begin tx", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(begin))
-
-		if err := tx.createObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
-			slog.Warn(err.Error())
-			replyError(ctxProcessor, err)
-			return
-		}
-
-		if err := tx.commit(ctxProcessor); err != nil {
+		if err := createObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
 			slog.Warn(err.Error())
 			replyError(ctxProcessor, err)
 			return
@@ -165,44 +126,24 @@ func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProce
 
 	defer replyOk(ctxProcessor)
 
+	start := time.Now()
+
 	// ctxProcessor.ObjectMutexLock(false)
 	// defer ctxProcessor.ObjectMutexUnlock()
-	m := map[string]beginTxType{
-		_SESSION_TYPE: {
-			Mode: "only",
-			Objects: map[string]struct{}{
-				caller.ID: {},
-			},
-		},
-		_CONTROLLER_TYPE: {
-			Mode: "only",
-			Objects: map[string]struct{}{
-				self.ID: {},
-			},
-		},
-	}
 
-	tx, err := beginTransactionWithTypes(ctxProcessor, pool.GetTxID(), m)
-	if err != nil {
+	if err := deleteObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
 		slog.Warn(err.Error())
 		return
 	}
 
-	if err := tx.deleteObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
+	if err := deleteObjectsLink(ctxProcessor, caller.ID, self.ID); err != nil {
 		slog.Warn(err.Error())
 		return
 	}
 
-	if err := tx.deleteObjectsLink(ctxProcessor, caller.ID, self.ID); err != nil {
-		slog.Warn(err.Error())
-		return
+	if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_unsub_time", "", []string{"id"}); err == nil {
+		gaugeVec.With(prometheus.Labels{"id": self.ID}).Set(float64(time.Since(start).Microseconds()))
 	}
-
-	if err := tx.commit(ctxProcessor); err != nil {
-		slog.Warn(err.Error())
-		return
-	}
-
 	// TODO: delete controller if there is no subs
 }
 
@@ -213,6 +154,8 @@ func (h *statefunHandler) updateControllerSubscriber(_ sfplugins.StatefunExecuto
 
 	// ctxProcessor.ObjectMutexLock(false)
 	// defer ctxProcessor.ObjectMutexUnlock()
+
+	start := time.Now()
 
 	object := ctxProcessor.GetObjectContext()
 
@@ -254,6 +197,13 @@ func (h *statefunHandler) updateControllerSubscriber(_ sfplugins.StatefunExecuto
 			slog.Warn(err.Error())
 		}
 	}
+
+	if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_update_subscribers_time", "", []string{"id", "count"}); err == nil {
+		gaugeVec.With(prometheus.Labels{
+			"id":    self.ID,
+			"count": strconv.Itoa(len(subscribers)),
+		}).Set(float64(time.Since(start).Microseconds()))
+	}
 }
 
 const controllerConstructCreate = "functions.client.controller.construct.create"
@@ -261,7 +211,7 @@ const controllerConstructCreate = "functions.client.controller.construct.create"
 /*
 @property:<json path>
 
-@function:<function name>:[[arg1 value],[arg2 value],...[argN value]] - ideal
+@function:<function.name.id>:[[arg1 value],[arg2 value],...[argN value]] - ideal
 
 @function:getChildren(linkType) - now
 */
@@ -269,12 +219,20 @@ func (h *statefunHandler) createControllerConstruct(_ sfplugins.StatefunExecutor
 	objectID := ctxProcessor.Self.ID
 	payload := ctxProcessor.Payload
 
+	start := time.Now()
+
 	decorators := parseDecorators(objectID, payload)
 	construct := easyjson.NewJSONObject()
 
 	for key, cd := range decorators {
 		result := cd.Invoke(ctxProcessor)
 		construct.SetByPath(key, result)
+	}
+
+	if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_create_construct", "", []string{"id"}); err == nil {
+		gaugeVec.With(prometheus.Labels{
+			"id": objectID,
+		}).Set(float64(time.Since(start).Microseconds()))
 	}
 
 	reply(ctxProcessor, "ok", construct)

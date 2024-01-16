@@ -9,11 +9,9 @@ import (
 
 	"github.com/foliagecp/easyjson"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
+	"github.com/foliagecp/sdk/statefun/system"
 	"github.com/prometheus/client_golang/prometheus"
 )
-
-// const clientIngressFunction = "ui.ingress"
-var sessionTxID = "80afc12b878f4f02d00e6d54d904709a"
 
 /*
 Payload:
@@ -77,49 +75,23 @@ func (h *statefunHandler) initSession(_ sfplugins.StatefunExecutor, ctxProcessor
 		body.SetByPath("last_activity_time", easyjson.NewJSON(now.UnixNano()))
 		body.SetByPath("client_id", payload.GetByPath("client_id"))
 
-		// clone part of graph
-		//begin := time.Now()
-		m := map[string]beginTxType{
-			_SESSION_TYPE: {
-				Mode: "none",
-			},
-			"group": {
-				Mode: "all",
-			},
-		}
-		tx, err := beginTransactionWithTypes(ctxProcessor, pool.GetTxID(), m)
-		if err != nil {
+		if err := createObject(ctxProcessor, sessionID, _SESSION_TYPE, &body); err != nil {
 			slog.Warn(err.Error())
 			return
 		}
-		//slog.Warn("begin tx", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(begin))
 
-		//createObj := time.Now()
-		if err := tx.createObject(ctxProcessor, sessionID, _SESSION_TYPE, &body); err != nil {
+		if err := createObjectsLink(ctxProcessor, _SESSIONS_ENTYPOINT, sessionID); err != nil {
 			slog.Warn(err.Error())
 			return
 		}
-		//slog.Warn("create vertex", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(createObj))
-
-		//createLink := time.Now()
-		if err := tx.createObjectsLink(ctxProcessor, _SESSIONS_ENTYPOINT, sessionID); err != nil {
-			slog.Warn(err.Error())
-			return
-		}
-		//slog.Warn("create link", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(createLink))
-
-		//commit := time.Now()
-		if err := tx.commit(ctxProcessor); err != nil {
-			slog.Warn(err.Error())
-			return
-		}
-		//slog.Warn("commit", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(commit))
 
 		if time.Since(now).Seconds() > 1 {
-			slog.Warn("session create", "session_id", sessionID, "tx_id", tx.id, "time", time.Since(now))
+			slog.Warn("session create", "session_id", sessionID, "time", time.Since(now))
 		}
 
-		SessionCreationTime.With(prometheus.Labels{"session": sessionID}).Observe(float64(time.Since(now).Milliseconds()))
+		if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_session_creation_time", "", []string{"id"}); err == nil {
+			gaugeVec.With(prometheus.Labels{"id": sessionID}).Set(float64(time.Since(now).Microseconds()))
+		}
 	}
 
 	if payload.PathExists("command") {
@@ -295,6 +267,13 @@ func (h *statefunHandler) setSessionController(_ sfplugins.StatefunExecutor, ctx
 				slog.Warn("client setup controller", "id", sessionID, "ctrl_id", controllerID.String(), "dt", time.Since(start))
 			}
 
+			if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_session_controller_setup_time", "", []string{"session_id", "controller_id"}); err == nil {
+				gaugeVec.With(prometheus.Labels{
+					"session_id":    sessionID,
+					"controller_id": controllerID.String(),
+				}).Set(float64(time.Since(start).Microseconds()))
+			}
+
 			linkExists := false
 
 			links := getChildrenUUIDSByLinkType(ctxProcessor, sessionID, _CONTROLLER_TYPE)
@@ -307,33 +286,7 @@ func (h *statefunHandler) setSessionController(_ sfplugins.StatefunExecutor, ctx
 
 			if !linkExists {
 				// create link
-				m := map[string]beginTxType{
-					_SESSION_TYPE: {
-						Mode: "only",
-						Objects: map[string]struct{}{
-							sessionID: {},
-						},
-					},
-					_CONTROLLER_TYPE: {
-						Mode: "only",
-						Objects: map[string]struct{}{
-							controllerID.String(): {},
-						},
-					},
-				}
-
-				tx, err := beginTransactionWithTypes(ctxProcessor, pool.GetTxID(), m)
-				if err != nil {
-					slog.Warn(err.Error())
-					return
-				}
-
-				if err := tx.createObjectsLink(ctxProcessor, sessionID, controllerID.String()); err != nil {
-					slog.Warn(err.Error())
-					continue
-				}
-
-				if err := tx.commit(ctxProcessor); err != nil {
+				if err := createObjectsLink(ctxProcessor, sessionID, controllerID.String()); err != nil {
 					slog.Warn(err.Error())
 					continue
 				}
@@ -343,6 +296,14 @@ func (h *statefunHandler) setSessionController(_ sfplugins.StatefunExecutor, ctx
 }
 
 func checkClientTypes(ctx *sfplugins.StatefunContextProcessor) error {
+	start := time.Now()
+
+	defer func() {
+		if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_app_lib_check_types", "", []string{}); err == nil {
+			gaugeVec.With(prometheus.Labels{}).Set(float64(time.Since(start).Microseconds()))
+		}
+	}()
+
 	links := []string{
 		"types.out.ltp_oid-bdy.__type." + _SESSION_TYPE,
 		"types.out.ltp_oid-bdy.__type." + _CONTROLLER_TYPE,

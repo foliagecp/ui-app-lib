@@ -10,7 +10,7 @@ const (
 	_SESSION_TYPE       = "ui_session"
 	_CONTROLLER_TYPE    = "ui_controller"
 	_SUBSCRIBER_TYPE    = "ui_subscriber"
-	_SESSIONS_ENTYPOINT = "sessions_entrypoint"
+	_SESSIONS_ENTYPOINT = "ui_sessions_entrypoint"
 )
 
 type statefunHandler struct {

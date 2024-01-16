@@ -10,8 +10,46 @@ import (
 
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/embedded/graph/common"
+	sf "github.com/foliagecp/sdk/statefun/plugins"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 )
+
+func createObject(ctx *sfplugins.StatefunContextProcessor, objectID, originType string, body *easyjson.JSON) error {
+	const op = "functions.cmdb.api.object.create"
+
+	payload := easyjson.NewJSONObject()
+	payload.SetByPath("origin_type", easyjson.NewJSON(originType))
+	payload.SetByPath("body", *body)
+
+	result, err := ctx.Request(sf.GolangLocalRequest, op, objectID, &payload, nil)
+	if err != nil {
+		return err
+	}
+
+	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
+		return fmt.Errorf("%v", result.GetByPath("payload.result"))
+	}
+
+	return nil
+}
+
+func createObjectsLink(ctx *sf.StatefunContextProcessor, from, to string) error {
+	const op = "functions.cmdb.api.objects.link.create"
+
+	payload := easyjson.NewJSONObject()
+	payload.SetByPath("to", easyjson.NewJSON(to))
+
+	result, err := ctx.Request(sf.GolangLocalRequest, op, from, &payload, nil)
+	if err != nil {
+		return err
+	}
+
+	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
+		return fmt.Errorf("%v", result.GetByPath("payload.result"))
+	}
+
+	return nil
+}
 
 func createLink(ctx *sfplugins.StatefunContextProcessor, from, to, linkType string, body *easyjson.JSON, tags ...string) error {
 	const op = "functions.graph.api.link.create"
@@ -32,6 +70,43 @@ func createLink(ctx *sfplugins.StatefunContextProcessor, from, to, linkType stri
 
 	if _, err := ctx.Request(sfplugins.GolangLocalRequest, op, from, &link, nil); err != nil {
 		return fmt.Errorf("create link: %w", err)
+	}
+
+	return nil
+}
+
+func deleteObjectsLink(ctx *sfplugins.StatefunContextProcessor, from, to string) error {
+	const op = "functions.cmdb.api.objects.link.delete"
+
+	payload := easyjson.NewJSONObject()
+	payload.SetByPath("to", easyjson.NewJSON(to))
+
+	result, err := ctx.Request(sf.GolangLocalRequest, op, from, &payload, nil)
+	if err != nil {
+		return err
+	}
+
+	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
+		return fmt.Errorf("%v", result.GetByPath("payload.result"))
+	}
+
+	return nil
+}
+
+func updateObject(ctx *sfplugins.StatefunContextProcessor, objectID, mode string, body *easyjson.JSON) error {
+	const op = "functions.cmdb.api.object.update"
+
+	payload := easyjson.NewJSONObject()
+	payload.SetByPath("mode", easyjson.NewJSON(mode))
+	payload.SetByPath("body", *body)
+
+	result, err := ctx.Request(sf.GolangLocalRequest, op, objectID, &payload, nil)
+	if err != nil {
+		return err
+	}
+
+	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
+		return fmt.Errorf("%v", result.GetByPath("payload.result"))
 	}
 
 	return nil

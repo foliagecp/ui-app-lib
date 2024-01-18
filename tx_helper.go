@@ -112,6 +112,7 @@ func (t *txHelper) createObjectsLink(ctx *sf.StatefunContextProcessor, from, to 
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("from", easyjson.NewJSON(from))
 	payload.SetByPath("to", easyjson.NewJSON(to))
+	payload.SetByPath("body", easyjson.NewJSONObject())
 
 	result, err := ctx.Request(sf.GolangLocalRequest, _TX_CREATE_OBJECTS_LINK, t.id, &payload, nil)
 	if err != nil {
@@ -130,6 +131,7 @@ func (t *txHelper) createTypesLink(ctx *sf.StatefunContextProcessor, from, to, o
 	payload.SetByPath("from", easyjson.NewJSON(from))
 	payload.SetByPath("to", easyjson.NewJSON(to))
 	payload.SetByPath("object_link_type", easyjson.NewJSON(objectLinkType))
+	payload.SetByPath("body", easyjson.NewJSONObject())
 
 	result, err := ctx.Request(sf.GolangLocalRequest, _TX_CREATE_TYPES_LINK, t.id, &payload, nil)
 	if err != nil {

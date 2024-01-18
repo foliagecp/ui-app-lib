@@ -38,8 +38,15 @@ func (c *controllerFunction) Invoke(ctx *sfplugins.StatefunContextProcessor) eas
 
 		children := getChildrenUUIDSByLinkType(ctx, c.id, lt)
 		return easyjson.JSONFromArray(children)
+	case "getInOutLinkTypes":
+		out := getInOutLinkTypes(ctx, c.id)
+		return easyjson.JSONFromArray(out)
 	case "getOutLinkTypes":
 		out := getOutLinkTypes(ctx, c.id)
+		return easyjson.JSONFromArray(out)
+	case "getLinksByType":
+		lt := c.args[0]
+		out := getLinksByType(ctx, c.id, lt)
 		return easyjson.JSONFromArray(out)
 	}
 

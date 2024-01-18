@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/foliagecp/easyjson"
@@ -68,6 +69,15 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 			return
 		}
 
+		objectTypes := ctxProcessor.GlobalCache.GetKeysByPattern(outLinkKeyPattern(objectUUID, ">", "__type"))
+		objectType := objectTypes[0]
+
+		if err := createTypesLink(ctxProcessor, _CONTROLLER_TYPE, objectType, _CONTROLLER_SUBJECT_TYPE); err != nil {
+			slog.Warn(err.Error())
+			replyError(ctxProcessor, err)
+			return
+		}
+
 		if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_creation_time", "", []string{"id"}); err == nil {
 			gaugeVec.With(prometheus.Labels{"id": self.ID}).Set(float64(time.Since(start).Microseconds()))
 		}
@@ -77,11 +87,11 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 		}
 
 		triggerPayload := easyjson.NewJSONObject()
-		triggerPayload.SetByPath("body.triggers.update", easyjson.JSONFromArray([]string{controllerSubscriberUpdateFunction}))
+		triggerPayload.SetByPath("body.triggers.update", easyjson.JSONFromArray([]string{controllerTriggerFunction}))
 		ctxProcessor.Request(sfplugins.GolangLocalRequest, "functions.cmdb.api.object.update", objectUUID, &triggerPayload, nil)
 
 		updatePayload := easyjson.NewJSONObject()
-		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, controllerSubscriberUpdateFunction, self.ID, &updatePayload, nil); err != nil {
+		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, controllerUpdateFunction, self.ID, &updatePayload, nil); err != nil {
 			slog.Warn(err.Error())
 		}
 	} else {
@@ -147,9 +157,34 @@ func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProce
 	// TODO: delete controller if there is no subs
 }
 
-const controllerSubscriberUpdateFunction = "functions.client.controller.subscriber.update"
+const controllerTriggerFunction = "functions.client.controller.trigger"
 
-func (h *statefunHandler) updateControllerSubscriber(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
+func (h *statefunHandler) controllerTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
+	objectUUID := ctxProcessor.Self.ID
+	pattern := inLinkKeyPattern(objectUUID, ">")
+
+	for _, v := range ctxProcessor.GlobalCache.GetKeysByPattern(pattern) {
+		s := strings.Split(v, ".")
+		if len(s) == 0 {
+			continue
+		}
+
+		lt := s[len(s)-1]
+
+		if lt != _CONTROLLER_SUBJECT_TYPE {
+			continue
+		}
+
+		controllerID := s[len(s)-2]
+
+		updatePayload := easyjson.NewJSONObject()
+		ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, controllerUpdateFunction, controllerID, &updatePayload, nil)
+	}
+}
+
+const controllerUpdateFunction = "functions.client.controller.update"
+
+func (h *statefunHandler) updateController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	self := ctxProcessor.Self
 
 	// ctxProcessor.ObjectMutexLock(false)

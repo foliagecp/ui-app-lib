@@ -10,6 +10,7 @@ import (
 
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/embedded/graph/common"
+	"github.com/foliagecp/sdk/embedded/graph/crud"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 )
@@ -51,30 +52,6 @@ func createObjectsLink(ctx *sf.StatefunContextProcessor, from, to string) error 
 	return nil
 }
 
-func createLink(ctx *sfplugins.StatefunContextProcessor, from, to, linkType string, body *easyjson.JSON, tags ...string) error {
-	const op = "functions.graph.api.link.create"
-
-	link := easyjson.NewJSONObject()
-	link.SetByPath("descendant_uuid", easyjson.NewJSON(to))
-	link.SetByPath("link_type", easyjson.NewJSON(linkType))
-
-	if body == nil {
-		link.SetByPath("link_body", easyjson.NewJSONObject())
-	} else {
-		link.SetByPath("link_body", *body)
-	}
-
-	if len(tags) > 0 {
-		link.SetByPath("link_body.tags", easyjson.JSONFromArray(tags))
-	}
-
-	if _, err := ctx.Request(sfplugins.GolangLocalRequest, op, from, &link, nil); err != nil {
-		return fmt.Errorf("create link: %w", err)
-	}
-
-	return nil
-}
-
 func deleteObjectsLink(ctx *sfplugins.StatefunContextProcessor, from, to string) error {
 	const op = "functions.cmdb.api.objects.link.delete"
 
@@ -93,32 +70,100 @@ func deleteObjectsLink(ctx *sfplugins.StatefunContextProcessor, from, to string)
 	return nil
 }
 
-func updateObject(ctx *sfplugins.StatefunContextProcessor, objectID, mode string, body *easyjson.JSON) error {
-	const op = "functions.cmdb.api.object.update"
-
-	payload := easyjson.NewJSONObject()
-	payload.SetByPath("mode", easyjson.NewJSON(mode))
-	payload.SetByPath("body", *body)
-
-	result, err := ctx.Request(sf.GolangLocalRequest, op, objectID, &payload, nil)
+func createTypesLink(ctx *sfplugins.StatefunContextProcessor, from, to, objectLinkType string) error {
+	tx, err := beginTransaction(ctx, pool.GetTxID(), "min")
 	if err != nil {
 		return err
 	}
 
-	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
-		return fmt.Errorf("%v", result.GetByPath("payload.result"))
+	if err := tx.createTypesLink(ctx, from, to, objectLinkType); err != nil {
+		return err
 	}
 
-	return nil
+	return tx.commit(ctx)
+}
+
+type Link struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+	Type   string `json:"type"`
+}
+
+func outLinkKeyPattern(id, target string, linkType ...string) string {
+	if len(linkType) > 0 {
+		lt := linkType[0]
+
+		return fmt.Sprintf(crud.OutLinkBodyKeyPrefPattern+crud.LinkKeySuff2Pattern,
+			id, lt, target,
+		)
+	}
+
+	return fmt.Sprintf(crud.OutLinkBodyKeyPrefPattern+crud.LinkKeySuff1Pattern,
+		id, target,
+	)
+}
+
+func inLinkKeyPattern(id, target string, linkType ...string) string {
+	if len(linkType) > 0 {
+		lt := linkType[0]
+
+		return fmt.Sprintf(crud.InLinkKeyPrefPattern+crud.LinkKeySuff2Pattern,
+			id, target, lt,
+		)
+	}
+
+	return fmt.Sprintf(crud.InLinkKeyPrefPattern+crud.LinkKeySuff1Pattern,
+		id, target,
+	)
+}
+
+func getLinksByType(ctx *sfplugins.StatefunContextProcessor, uuid, filterLinkType string) []Link {
+	result := make([]Link, 0)
+
+	outPattern := outLinkKeyPattern(uuid, ">", filterLinkType)
+	for _, key := range ctx.GlobalCache.GetKeysByPattern(outPattern) {
+		split := strings.Split(key, ".")
+		if len(split) == 0 {
+			continue
+		}
+
+		result = append(result, Link{
+			Source: uuid,
+			Target: split[len(split)-1],
+			Type:   filterLinkType,
+		})
+	}
+
+	inPattern := inLinkKeyPattern(uuid, ">")
+	for _, key := range ctx.GlobalCache.GetKeysByPattern(inPattern) {
+		split := strings.Split(key, ".")
+		if len(split) == 0 {
+			continue
+		}
+
+		ltype := split[len(split)-1]
+
+		if ltype != filterLinkType {
+			continue
+		}
+
+		result = append(result, Link{
+			Source: split[len(split)-2],
+			Target: uuid,
+			Type:   filterLinkType,
+		})
+	}
+
+	return result
 }
 
 func getOutLinkTypes(ctx *sfplugins.StatefunContextProcessor, uuid string) []string {
-	pattern := uuid + ".out.ltp_oid-bdy.>"
+	outPattern := outLinkKeyPattern(uuid, ">")
 
 	result := make([]string, 0)
 	visited := make(map[string]struct{})
 
-	for _, key := range ctx.GlobalCache.GetKeysByPattern(pattern) {
+	for _, key := range ctx.GlobalCache.GetKeysByPattern(outPattern) {
 		split := strings.Split(key, ".")
 		if len(split) == 0 {
 			continue
@@ -134,7 +179,56 @@ func getOutLinkTypes(ctx *sfplugins.StatefunContextProcessor, uuid string) []str
 
 		if _, ok := visited[linkType]; !ok {
 			visited[linkType] = struct{}{}
+			result = append(result, linkType)
+		}
+	}
 
+	return result
+}
+
+func getInOutLinkTypes(ctx *sfplugins.StatefunContextProcessor, uuid string) []string {
+	outPattern := outLinkKeyPattern(uuid, ">")
+
+	result := make([]string, 0)
+	visited := make(map[string]struct{})
+
+	for _, key := range ctx.GlobalCache.GetKeysByPattern(outPattern) {
+		split := strings.Split(key, ".")
+		if len(split) == 0 {
+			continue
+		}
+
+		linkType := split[len(split)-2]
+
+		// TODO: use builtin constants
+		switch linkType {
+		case "__object", "__type", "trigger", "controller", "__types", "__objects":
+			continue
+		}
+
+		if _, ok := visited[linkType]; !ok {
+			visited[linkType] = struct{}{}
+			result = append(result, linkType)
+		}
+	}
+
+	inPattern := inLinkKeyPattern(uuid, ">")
+	for _, key := range ctx.GlobalCache.GetKeysByPattern(inPattern) {
+		split := strings.Split(key, ".")
+		if len(split) == 0 {
+			continue
+		}
+
+		linkType := split[len(split)-1]
+
+		// TODO: use builtin constants
+		switch linkType {
+		case "__object", "__type", "trigger", "controller", "__types", "__objects":
+			continue
+		}
+
+		if _, ok := visited[linkType]; !ok {
+			visited[linkType] = struct{}{}
 			result = append(result, linkType)
 		}
 	}
@@ -145,9 +239,9 @@ func getOutLinkTypes(ctx *sfplugins.StatefunContextProcessor, uuid string) []str
 func getChildrenUUIDSByLinkType(ctx *sfplugins.StatefunContextProcessor, uuid, filterLinkType string) []string {
 	result := make([]string, 0)
 
-	pattern := uuid + ".out.ltp_oid-bdy.>"
+	pattern := outLinkKeyPattern(uuid, ">")
 	if filterLinkType != "" {
-		pattern = uuid + ".out.ltp_oid-bdy." + filterLinkType + ".>"
+		pattern = outLinkKeyPattern(uuid, ">", filterLinkType)
 	}
 
 	for _, key := range ctx.GlobalCache.GetKeysByPattern(pattern) {

@@ -305,15 +305,15 @@ func checkClientTypes(ctx *sfplugins.StatefunContextProcessor) error {
 	}()
 
 	links := []string{
-		"types.out.ltp_oid-bdy.__type." + _SESSION_TYPE,
-		"types.out.ltp_oid-bdy.__type." + _CONTROLLER_TYPE,
-		"group.out.ltp_oid-bdy.__type." + _SESSION_TYPE,
-		_SESSION_TYPE + ".out.ltp_oid-bdy.__type." + _CONTROLLER_TYPE,
-		_CONTROLLER_TYPE + ".out.ltp_oid-bdy.__type." + _SESSION_TYPE,
-		_SESSIONS_ENTYPOINT + ".out.ltp_oid-bdy.__type.group",
-		"group.out.ltp_oid-bdy.__object." + _SESSIONS_ENTYPOINT,
-		"objects.out.ltp_oid-bdy.__object." + _SESSIONS_ENTYPOINT,
-		"nav.out.ltp_oid-bdy.group." + _SESSIONS_ENTYPOINT,
+		outLinkKeyPattern("types", _SESSION_TYPE, "__type"),
+		outLinkKeyPattern("types", _CONTROLLER_TYPE, "__type"),
+		outLinkKeyPattern("group", _SESSION_TYPE, "__type"),
+		outLinkKeyPattern(_SESSION_TYPE, _CONTROLLER_TYPE, "__type"),
+		outLinkKeyPattern(_CONTROLLER_TYPE, _SESSION_TYPE, "__type"),
+		outLinkKeyPattern(_SESSIONS_ENTYPOINT, "group", "__type"),
+		outLinkKeyPattern("group", _SESSIONS_ENTYPOINT, "__object"),
+		outLinkKeyPattern("objects", _SESSIONS_ENTYPOINT, "__object"),
+		outLinkKeyPattern("nav", _SESSIONS_ENTYPOINT, "group"),
 	}
 
 	needs := make([]string, 0)

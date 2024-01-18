@@ -12,10 +12,9 @@ import (
 	"github.com/foliagecp/sdk/embedded/graph/common"
 	"github.com/foliagecp/sdk/embedded/graph/crud"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
-	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 )
 
-func createObject(ctx *sfplugins.StatefunContextProcessor, objectID, originType string, body *easyjson.JSON) error {
+func createObject(ctx *sf.StatefunContextProcessor, objectID, originType string, body *easyjson.JSON) error {
 	const op = "functions.cmdb.api.object.create"
 
 	payload := easyjson.NewJSONObject()
@@ -53,7 +52,7 @@ func createObjectsLink(ctx *sf.StatefunContextProcessor, from, to string) error 
 	return nil
 }
 
-func deleteObjectsLink(ctx *sfplugins.StatefunContextProcessor, from, to string) error {
+func deleteObjectsLink(ctx *sf.StatefunContextProcessor, from, to string) error {
 	const op = "functions.cmdb.api.objects.link.delete"
 
 	payload := easyjson.NewJSONObject()
@@ -71,7 +70,7 @@ func deleteObjectsLink(ctx *sfplugins.StatefunContextProcessor, from, to string)
 	return nil
 }
 
-func createTypesLink(ctx *sfplugins.StatefunContextProcessor, from, to, objectLinkType string) error {
+func createTypesLink(ctx *sf.StatefunContextProcessor, from, to, objectLinkType string) error {
 	tx, err := beginTransaction(ctx, pool.GetTxID(), "min")
 	if err != nil {
 		return err
@@ -118,7 +117,7 @@ func inLinkKeyPattern(id, target string, linkType ...string) string {
 	)
 }
 
-func getLinksByType(ctx *sfplugins.StatefunContextProcessor, uuid, filterLinkType string) []Link {
+func getLinksByType(ctx *sf.StatefunContextProcessor, uuid, filterLinkType string) []Link {
 	result := make([]Link, 0)
 
 	outPattern := outLinkKeyPattern(uuid, ">", filterLinkType)
@@ -158,7 +157,7 @@ func getLinksByType(ctx *sfplugins.StatefunContextProcessor, uuid, filterLinkTyp
 	return result
 }
 
-func getOutLinkTypes(ctx *sfplugins.StatefunContextProcessor, uuid string) []string {
+func getOutLinkTypes(ctx *sf.StatefunContextProcessor, uuid string) []string {
 	outPattern := outLinkKeyPattern(uuid, ">")
 
 	result := make([]string, 0)
@@ -187,7 +186,7 @@ func getOutLinkTypes(ctx *sfplugins.StatefunContextProcessor, uuid string) []str
 	return result
 }
 
-func getInOutLinkTypes(ctx *sfplugins.StatefunContextProcessor, uuid string) []string {
+func getInOutLinkTypes(ctx *sf.StatefunContextProcessor, uuid string) []string {
 	outPattern := outLinkKeyPattern(uuid, ">")
 
 	result := make([]string, 0)
@@ -237,7 +236,7 @@ func getInOutLinkTypes(ctx *sfplugins.StatefunContextProcessor, uuid string) []s
 	return result
 }
 
-func getChildrenUUIDSByLinkType(ctx *sfplugins.StatefunContextProcessor, uuid, filterLinkType string) []string {
+func getChildrenUUIDSByLinkType(ctx *sf.StatefunContextProcessor, uuid, filterLinkType string) []string {
 	result := make([]string, 0)
 
 	pattern := outLinkKeyPattern(uuid, ">")
@@ -260,11 +259,11 @@ func getChildrenUUIDSByLinkType(ctx *sfplugins.StatefunContextProcessor, uuid, f
 	return result
 }
 
-func replyOk(ctx *sfplugins.StatefunContextProcessor) {
+func replyOk(ctx *sf.StatefunContextProcessor) {
 	reply(ctx, "ok", easyjson.NewJSONObject())
 }
 
-func replyError(ctx *sfplugins.StatefunContextProcessor, err error) {
+func replyError(ctx *sf.StatefunContextProcessor, err error) {
 	reply(ctx, "failed", easyjson.NewJSON(err.Error()))
 }
 
@@ -280,7 +279,7 @@ func checkRequestError(result *easyjson.JSON, err error) error {
 	return nil
 }
 
-func reply(ctx *sfplugins.StatefunContextProcessor, status string, data easyjson.JSON) {
+func reply(ctx *sf.StatefunContextProcessor, status string, data easyjson.JSON) {
 	qid := common.GetQueryID(ctx)
 	reply := easyjson.NewJSONObject()
 	reply.SetByPath("status", easyjson.NewJSON(status))

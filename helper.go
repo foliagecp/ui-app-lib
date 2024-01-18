@@ -39,6 +39,7 @@ func createObjectsLink(ctx *sf.StatefunContextProcessor, from, to string) error 
 
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("to", easyjson.NewJSON(to))
+	payload.SetByPath("body", easyjson.NewJSONObject())
 
 	result, err := ctx.Request(sf.GolangLocalRequest, op, from, &payload, nil)
 	if err != nil {

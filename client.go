@@ -247,7 +247,7 @@ func (h *statefunHandler) setSessionController(_ sfplugins.StatefunExecutor, ctx
 
 		uuids, _ := controller.GetByPath("uuids").AsArrayString()
 		body := controller.GetByPath("body")
-		setupPayload := easyjson.NewJSONObjectWithKeyValue("body", body)
+		setupPayload := easyjson.NewJSONObjectWithKeyValue(_CONTROLLER_DECLARATION, body)
 
 		for _, uuid := range uuids {
 			// setup controller

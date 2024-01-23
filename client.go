@@ -274,22 +274,9 @@ func (h *statefunHandler) setSessionController(_ sfplugins.StatefunExecutor, ctx
 				}).Set(float64(time.Since(start).Microseconds()))
 			}
 
-			linkExists := false
-
-			links := getChildrenUUIDSByLinkType(ctxProcessor, sessionID, _CONTROLLER_TYPE)
-			for _, v := range links {
-				if v == controllerID.String() {
-					linkExists = true
-					break
-				}
-			}
-
-			if !linkExists {
-				// create link
-				if err := createObjectsLink(ctxProcessor, sessionID, controllerID.String()); err != nil {
-					slog.Warn(err.Error())
-					continue
-				}
+			if err := createObjectsLink(ctxProcessor, sessionID, controllerID.String()); err != nil {
+				slog.Warn(err.Error())
+				continue
 			}
 		}
 	}

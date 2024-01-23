@@ -36,9 +36,34 @@ func createObject(ctx *sf.StatefunContextProcessor, objectID, originType string,
 func createObjectsLink(ctx *sf.StatefunContextProcessor, from, to string) error {
 	const op = "functions.cmdb.api.objects.link.create"
 
+	pattern := fmt.Sprintf(crud.InLinkKeyPrefPattern+crud.LinkKeySuff2Pattern, to, from, ">")
+	if keys := ctx.GlobalCache.GetKeysByPattern(pattern); len(keys) > 0 {
+		return nil
+	}
+
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("to", easyjson.NewJSON(to))
 	payload.SetByPath("body", easyjson.NewJSONObject())
+
+	result, err := ctx.Request(sf.GolangLocalRequest, op, from, &payload, nil)
+	if err != nil {
+		return err
+	}
+
+	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
+		return fmt.Errorf("%v", result.GetByPath("payload.result"))
+	}
+
+	return nil
+}
+
+func createTypesLink(ctx *sf.StatefunContextProcessor, from, to, objectLinkType string) error {
+	const op = "functions.cmdb.api.types.link.create"
+
+	payload := easyjson.NewJSONObject()
+	payload.SetByPath("to", easyjson.NewJSON(to))
+	payload.SetByPath("body", easyjson.NewJSONObject())
+	payload.SetByPath("object_link_type", easyjson.NewJSON(objectLinkType))
 
 	result, err := ctx.Request(sf.GolangLocalRequest, op, from, &payload, nil)
 	if err != nil {
@@ -68,19 +93,6 @@ func deleteObjectsLink(ctx *sf.StatefunContextProcessor, from, to string) error 
 	}
 
 	return nil
-}
-
-func createTypesLink(ctx *sf.StatefunContextProcessor, from, to, objectLinkType string) error {
-	tx, err := beginTransaction(ctx, pool.GetTxID(), "min")
-	if err != nil {
-		return err
-	}
-
-	if err := tx.createTypesLink(ctx, from, to, objectLinkType); err != nil {
-		return err
-	}
-
-	return tx.commit(ctx)
 }
 
 type Link struct {

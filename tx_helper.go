@@ -24,33 +24,9 @@ type txHelper struct {
 	id string
 }
 
-type beginTxType struct {
-	Mode    string              `json:"mode"`
-	Objects map[string]struct{} `json:"objects,omitempty"`
-}
-
 func beginTransaction(ctx *sf.StatefunContextProcessor, id, mode string) (*txHelper, error) {
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("clone", easyjson.NewJSON(mode))
-
-	result, err := ctx.Request(sf.GolangLocalRequest, _TX_BEGIN, id, &payload, nil)
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-
-	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
-		return nil, fmt.Errorf("%v", result.GetByPath("payload.result"))
-	}
-
-	return &txHelper{
-		id: id,
-	}, nil
-}
-
-func beginTransactionWithTypes(ctx *sf.StatefunContextProcessor, id string, types map[string]beginTxType) (*txHelper, error) {
-	payload := easyjson.NewJSONObject()
-	payload.SetByPath("clone", easyjson.NewJSON("with_types"))
-	payload.SetByPath("types", easyjson.NewJSON(types))
 
 	result, err := ctx.Request(sf.GolangLocalRequest, _TX_BEGIN, id, &payload, nil)
 	if err != nil {
@@ -80,29 +56,6 @@ func (t *txHelper) commit(ctx *sf.StatefunContextProcessor, mode ...string) erro
 
 	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
 		return fmt.Errorf("%v", result.GetByPath("payload.result"))
-	}
-
-	return nil
-}
-
-func (t *txHelper) upsertObject(ctx *sf.StatefunContextProcessor, objectID, originType string, body easyjson.JSON) error {
-	if _, err := ctx.GlobalCache.GetValue(objectID); err != nil {
-		if err := t.createObject(ctx, objectID, originType, &body); err != nil {
-			return err
-		}
-	} else {
-		//update
-	}
-
-	return nil
-}
-
-func (t *txHelper) createObjectsLinkIfNotExists(ctx *sf.StatefunContextProcessor, from, to string) error {
-	// pattern := fmt.Sprintf("%s.out.ltp_oid-bdy.>.%s", from, to)
-	// ctx.GlobalCache.GetKeysByPattern(pattern)
-
-	if err := t.createObjectsLink(ctx, from, to); err != nil {
-		return err
 	}
 
 	return nil
@@ -163,65 +116,12 @@ func (t *txHelper) createObject(ctx *sf.StatefunContextProcessor, objectID, orig
 	return nil
 }
 
-func (t *txHelper) updateObject(ctx *sf.StatefunContextProcessor, objectID string, body *easyjson.JSON, mode ...string) error {
-	payload := easyjson.NewJSONObject()
-	payload.SetByPath("id", easyjson.NewJSON(objectID))
-	payload.SetByPath("body", *body)
-	if len(mode) > 0 {
-		payload.SetByPath("mode", easyjson.NewJSON(mode))
-	}
-
-	result, err := ctx.Request(sf.GolangLocalRequest, _TX_UPDATE_OBJECT, t.id, &payload, nil)
-	if err != nil {
-		return err
-	}
-
-	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
-		return fmt.Errorf("%v", result.GetByPath("payload.result"))
-	}
-
-	return nil
-}
-
 func (t *txHelper) createType(ctx *sf.StatefunContextProcessor, typeID string, body *easyjson.JSON) error {
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("id", easyjson.NewJSON(typeID))
 	payload.SetByPath("body", *body)
 
 	result, err := ctx.Request(sf.GolangLocalRequest, _TX_CREATE_TYPE, t.id, &payload, nil)
-	if err != nil {
-		return err
-	}
-
-	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
-		return fmt.Errorf("%v", result.GetByPath("payload.result"))
-	}
-
-	return nil
-}
-
-func (t *txHelper) deleteObject(ctx *sf.StatefunContextProcessor, id string) error {
-	payload := easyjson.NewJSONObject()
-	payload.SetByPath("id", easyjson.NewJSON(id))
-
-	result, err := ctx.Request(sf.GolangLocalRequest, _TX_DELETE_OBJECT, t.id, &payload, nil)
-	if err != nil {
-		return err
-	}
-
-	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
-		return fmt.Errorf("%v", result.GetByPath("payload.result"))
-	}
-
-	return nil
-}
-
-func (t *txHelper) deleteObjectsLink(ctx *sf.StatefunContextProcessor, from, to string) error {
-	payload := easyjson.NewJSONObject()
-	payload.SetByPath("from", easyjson.NewJSON(from))
-	payload.SetByPath("to", easyjson.NewJSON(to))
-
-	result, err := ctx.Request(sf.GolangLocalRequest, _TX_DELETE_OBJECTS_LINK, t.id, &payload, nil)
 	if err != nil {
 		return err
 	}

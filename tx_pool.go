@@ -16,14 +16,11 @@ func (p *TxPool) GetTxID() string {
 	return p.tx[mod]
 }
 
-var pool *TxPool
+var pool = &TxPool{}
 
 func init() {
-	txs := make([]string, 0, POOL_SIZE)
+	pool.tx = make([]string, 0, POOL_SIZE)
 	for i := 0; i < POOL_SIZE; i++ {
-		txs = append(txs, generateTxID(strconv.Itoa(i+int(time.Now().Unix()))))
-	}
-	pool = &TxPool{
-		tx: txs,
+		pool.tx = append(pool.tx, generateTxID(strconv.Itoa(i+int(time.Now().Unix()))))
 	}
 }

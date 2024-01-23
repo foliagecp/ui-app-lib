@@ -157,7 +157,11 @@ func (h *statefunHandler) controllerTrigger(_ sfplugins.StatefunExecutor, ctxPro
 		controllerID := s[len(s)-2]
 
 		updatePayload := easyjson.NewJSONObject()
-		ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, controllerUpdateFunction, controllerID, &updatePayload, nil)
+		err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal,
+			controllerUpdateFunction, controllerID, &updatePayload, nil)
+		if err != nil {
+			slog.Warn(err.Error())
+		}
 	}
 }
 

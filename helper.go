@@ -33,6 +33,22 @@ func createObject(ctx *sf.StatefunContextProcessor, objectID, originType string,
 	return nil
 }
 
+func deleteObject(ctx *sf.StatefunContextProcessor, id string) error {
+	const op = "functions.cmdb.api.object.delete"
+
+	payload := easyjson.NewJSONObject()
+	result, err := ctx.Request(sf.GolangLocalRequest, op, id, &payload, nil)
+	if err != nil {
+		return err
+	}
+
+	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
+		return fmt.Errorf("%v", result.GetByPath("payload.result"))
+	}
+
+	return nil
+}
+
 func createObjectsLink(ctx *sf.StatefunContextProcessor, from, to string) error {
 	const op = "functions.cmdb.api.objects.link.create"
 

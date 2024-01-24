@@ -5,7 +5,6 @@ package uilib
 import (
 	"fmt"
 	"log/slog"
-	"strconv"
 	"strings"
 	"time"
 
@@ -45,6 +44,9 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 	self := ctxProcessor.Self
 	caller := ctxProcessor.Caller
 	payload := ctxProcessor.Payload
+
+	ctxProcessor.ObjectMutexLock(false)
+	defer ctxProcessor.ObjectMutexUnlock()
 
 	object := ctxProcessor.GetObjectContext()
 	declarationIsEmpty := !object.GetByPath(_CONTROLLER_DECLARATION).IsNonEmptyObject()
@@ -120,6 +122,12 @@ func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProce
 
 	start := time.Now()
 
+	defer func() {
+		if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_unsub_time", "", []string{"id"}); err == nil {
+			gaugeVec.With(prometheus.Labels{"id": self.ID}).Set(float64(time.Since(start).Microseconds()))
+		}
+	}()
+
 	if err := deleteObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
 		slog.Warn(err.Error())
 		return
@@ -130,10 +138,17 @@ func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProce
 		return
 	}
 
-	if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_unsub_time", "", []string{"id"}); err == nil {
-		gaugeVec.With(prometheus.Labels{"id": self.ID}).Set(float64(time.Since(start).Microseconds()))
+	ctxProcessor.ObjectMutexLock(false)
+	defer ctxProcessor.ObjectMutexUnlock()
+
+	subs := getChildrenUUIDSByLinkType(ctxProcessor, self.ID, _SUBSCRIBER_TYPE)
+	if len(subs) > 0 {
+		return
 	}
-	// TODO: delete controller if there is no subs
+
+	if err := deleteObject(ctxProcessor, self.ID); err != nil {
+		slog.Warn(err.Error())
+	}
 }
 
 const controllerTriggerFunction = "functions.client.controller.trigger"
@@ -170,7 +185,8 @@ const controllerUpdateFunction = "functions.client.controller.update"
 func (h *statefunHandler) updateController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	self := ctxProcessor.Self
 
-	start := time.Now()
+	ctxProcessor.ObjectMutexLock(false)
+	defer ctxProcessor.ObjectMutexUnlock()
 
 	object := ctxProcessor.GetObjectContext()
 
@@ -213,12 +229,6 @@ func (h *statefunHandler) updateController(_ sfplugins.StatefunExecutor, ctxProc
 		}
 	}
 
-	if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_update_subscribers_time", "", []string{"id", "count"}); err == nil {
-		gaugeVec.With(prometheus.Labels{
-			"id":    self.ID,
-			"count": strconv.Itoa(len(subscribers)),
-		}).Set(float64(time.Since(start).Microseconds()))
-	}
 }
 
 const controllerConstructCreate = "functions.client.controller.construct.create"

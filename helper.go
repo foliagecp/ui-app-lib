@@ -76,6 +76,11 @@ func createObjectsLink(ctx *sf.StatefunContextProcessor, from, to string) error 
 func createTypesLink(ctx *sf.StatefunContextProcessor, from, to, objectLinkType string) error {
 	const op = "functions.cmdb.api.types.link.create"
 
+	link := outLinkKeyPattern(from, to, "__type")
+	if _, err := ctx.GlobalCache.GetValue(link); err == nil {
+		return nil
+	}
+
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("to", easyjson.NewJSON(to))
 	payload.SetByPath("body", easyjson.NewJSONObject())
@@ -83,11 +88,11 @@ func createTypesLink(ctx *sf.StatefunContextProcessor, from, to, objectLinkType 
 
 	result, err := ctx.Request(sf.GolangLocalRequest, op, from, &payload, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("create types link request: %w", err)
 	}
 
 	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
-		return fmt.Errorf("%v", result.GetByPath("payload.result"))
+		return fmt.Errorf("create types link: %v", result.GetByPath("payload.result"))
 	}
 
 	return nil

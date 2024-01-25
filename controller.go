@@ -45,6 +45,8 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 	caller := ctxProcessor.Caller
 	payload := ctxProcessor.Payload
 
+	log := slog.With("controller_id", self.ID)
+
 	ctxProcessor.ObjectMutexLock(false)
 	defer ctxProcessor.ObjectMutexUnlock()
 
@@ -55,42 +57,48 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 		start := time.Now()
 
 		if err := initController(ctxProcessor, self.ID, payload); err != nil {
-			slog.Warn(err.Error())
-			replyError(ctxProcessor, err)
+			log.Warn(err.Error())
 			return
 		}
 
 		if err := createObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
-			slog.Warn(err.Error())
-			replyError(ctxProcessor, err)
+			log.Warn(err.Error())
+			return
+		}
+
+		if err := createObjectsLink(ctxProcessor, caller.ID, self.ID); err != nil {
+			log.Warn(err.Error())
 			return
 		}
 
 		if time.Since(start).Milliseconds() > 500 {
-			slog.Warn("create controller", "ctrl_id", self.ID, "dt", time.Since(start))
+			log.Warn("create controller", "dt", time.Since(start))
 		}
 
-		if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_creation_time", "", []string{"id"}); err == nil {
-			gaugeVec.With(prometheus.Labels{"id": self.ID}).Set(float64(time.Since(start).Microseconds()))
-		}
+		// if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_creation_time", "", []string{"id"}); err == nil {
+		// 	gaugeVec.With(prometheus.Labels{"id": self.ID}).Set(float64(time.Since(start).Microseconds()))
+		// }
 
 		updatePayload := easyjson.NewJSONObject()
 		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, controllerUpdateFunction, self.ID, &updatePayload, nil); err != nil {
-			slog.Warn(err.Error())
+			log.Warn(err.Error())
 		}
 	} else {
 		subscribers := getChildrenUUIDSByLinkType(ctxProcessor, self.ID, _SUBSCRIBER_TYPE)
 
 		for _, v := range subscribers {
 			if v == caller.ID {
-				replyOk(ctxProcessor)
 				return
 			}
 		}
 
 		if err := createObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
-			slog.Warn(err.Error())
-			replyError(ctxProcessor, err)
+			log.Warn(err.Error())
+			return
+		}
+
+		if err := createObjectsLink(ctxProcessor, caller.ID, self.ID); err != nil {
+			log.Warn(err.Error())
 			return
 		}
 
@@ -104,12 +112,10 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 			reply.SetByPath(path, result)
 
 			if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, clientEgressFunction, caller.ID, &reply, nil); err != nil {
-				slog.Warn(err.Error())
+				log.Warn(err.Error())
 			}
 		}
 	}
-
-	replyOk(ctxProcessor)
 }
 
 const controllerUnsubFunction = "functions.client.controller.unsub"
@@ -184,6 +190,7 @@ const controllerUpdateFunction = "functions.client.controller.update"
 
 func (h *statefunHandler) updateController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	self := ctxProcessor.Self
+	log := slog.With("controller_id", self.ID)
 
 	ctxProcessor.ObjectMutexLock(false)
 	defer ctxProcessor.ObjectMutexUnlock()
@@ -196,7 +203,7 @@ func (h *statefunHandler) updateController(_ sfplugins.StatefunExecutor, ctxProc
 
 	result, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, controllerConstructCreate, controllerUUID, &declaration, nil)
 	if err != nil {
-		slog.Warn("Controller creation construct failed", "error", err)
+		log.Warn("Controller creation construct failed", "error", err)
 		result = easyjson.NewJSONObject().GetPtr()
 	}
 
@@ -228,7 +235,6 @@ func (h *statefunHandler) updateController(_ sfplugins.StatefunExecutor, ctxProc
 			slog.Warn(err.Error())
 		}
 	}
-
 }
 
 const controllerConstructCreate = "functions.client.controller.construct.create"
@@ -278,6 +284,10 @@ func initController(ctx *sfplugins.StatefunContextProcessor, id string, payload 
 	}
 
 	objectTypes := getChildrenUUIDSByLinkType(ctx, objectUUID, "__type")
+	if len(objectTypes) == 0 {
+		return fmt.Errorf("target object miss type")
+	}
+
 	objectType := objectTypes[0]
 
 	if err := createTypesLink(ctx, _CONTROLLER_TYPE, objectType, _CONTROLLER_SUBJECT_TYPE); err != nil {

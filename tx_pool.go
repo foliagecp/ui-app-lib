@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const POOL_SIZE = 1
+const POOL_SIZE = 5
 
 type TxPool struct {
 	tx []string

@@ -65,6 +65,8 @@ func (h *statefunHandler) initSession(_ sfplugins.StatefunExecutor, ctxProcessor
 
 	params := ctxProcessor.GetObjectContext()
 
+	log := slog.With("session_id", sessionID)
+
 	if !params.IsNonEmptyObject() {
 		now := time.Now()
 
@@ -76,17 +78,17 @@ func (h *statefunHandler) initSession(_ sfplugins.StatefunExecutor, ctxProcessor
 		body.SetByPath("client_id", payload.GetByPath("client_id"))
 
 		if err := createObject(ctxProcessor, sessionID, _SESSION_TYPE, &body); err != nil {
-			slog.Warn(err.Error())
+			log.Warn(err.Error())
 			return
 		}
 
 		if err := createObjectsLink(ctxProcessor, _SESSIONS_ENTYPOINT, sessionID); err != nil {
-			slog.Warn(err.Error())
+			log.Warn(err.Error())
 			return
 		}
 
 		if time.Since(now).Seconds() > 1 {
-			slog.Warn("session create", "session_id", sessionID, "time", time.Since(now))
+			log.Warn("session create", "time", time.Since(now))
 		}
 
 		if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_session_creation_time", "", []string{"id"}); err == nil {
@@ -94,14 +96,19 @@ func (h *statefunHandler) initSession(_ sfplugins.StatefunExecutor, ctxProcessor
 		}
 	}
 
-	if payload.PathExists("command") {
-		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, sessionCommandFunction, sessionID, payload, nil); err != nil {
-			slog.Warn(err.Error())
-		}
-	} else if payload.PathExists("controllers") {
-		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, clientControllersSetFunction, sessionID, payload, nil); err != nil {
-			slog.Warn(err.Error())
-		}
+	nextStatefun := ""
+
+	switch {
+	case payload.PathExists("command"):
+		nextStatefun = sessionCommandFunction
+	case payload.PathExists("controllers"):
+		nextStatefun = clientControllersSetFunction
+	default:
+		return
+	}
+
+	if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, nextStatefun, sessionID, payload, nil); err != nil {
+		slog.Warn(err.Error())
 	}
 }
 
@@ -113,14 +120,12 @@ Payload: *easyjson.JSON
 func (h *statefunHandler) clientEgress(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	payload := ctxProcessor.Payload
 	session := ctxProcessor.GetObjectContext()
-
-	if !session.IsNonEmptyObject() {
-		return
-	}
+	log := slog.With("session_id", ctxProcessor.Self.ID)
 
 	clientID := session.GetByPath("client_id").AsStringDefault("")
 
 	if clientID == "" {
+		log.Warn("Empty client id")
 		return
 	}
 
@@ -130,7 +135,7 @@ func (h *statefunHandler) clientEgress(_ sfplugins.StatefunExecutor, ctxProcesso
 	}
 
 	if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, h.cfg.EgressTopic, clientID, egressPayload, nil); err != nil {
-		slog.Warn(err.Error())
+		log.Warn(err.Error())
 	}
 }
 
@@ -161,10 +166,12 @@ func (h *statefunHandler) unsubSession(_ sfplugins.StatefunExecutor, ctxProcesso
 	self := ctxProcessor.Self
 	controllers := getChildrenUUIDSByLinkType(ctxProcessor, self.ID, _CONTROLLER_TYPE)
 
+	log := slog.With("session_id", self.ID)
+
 	for _, controllerUUID := range controllers {
 		result, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, controllerUnsubFunction, controllerUUID, easyjson.NewJSONObject().GetPtr(), nil)
 		if err := checkRequestError(result, err); err != nil {
-			slog.Warn("Controller unsub failed", "error", err)
+			log.Warn("Controller unsub failed", "error", err)
 		}
 	}
 
@@ -184,26 +191,27 @@ func (h *statefunHandler) sessionCommand(_ sfplugins.StatefunExecutor, ctxProces
 	sessionID := ctxProcessor.Self.ID
 	payload := ctxProcessor.Payload
 
+	log := slog.With("session_id", sessionID)
 	cmd := payload.GetByPath("command").AsStringDefault("")
 
 	switch cmd {
 	case "unsub":
 		if _, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, sessionUnsubFunction, sessionID, easyjson.NewJSONObject().GetPtr(), nil); err != nil {
-			slog.Warn("Session unsub failed", "error", err)
+			log.Warn("Session unsub failed", "error", err)
 		}
 
 		unsubPayload := easyjson.NewJSONObject()
 		unsubPayload.SetByPath("payload.command", payload.GetByPath("command"))
 		unsubPayload.SetByPath("payload.status", easyjson.NewJSON("ok"))
 		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, clientEgressFunction, sessionID, &unsubPayload, nil); err != nil {
-			slog.Warn(err.Error())
+			log.Warn("Failed to send into egress", "error", err.Error())
 		}
 	case "info":
 		session := ctxProcessor.GetObjectContext()
 		session.SetByPath("controllers", easyjson.JSONFromArray(getChildrenUUIDSByLinkType(ctxProcessor, sessionID, _CONTROLLER_TYPE)))
 
 		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, clientEgressFunction, sessionID, session, nil); err != nil {
-			slog.Warn(err.Error())
+			log.Warn("Failed to send into egress", "error", err.Error())
 		}
 	}
 }
@@ -228,16 +236,15 @@ Payload:
 func (h *statefunHandler) setSessionController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	sessionID := ctxProcessor.Self.ID
 	payload := ctxProcessor.Payload
+	log := slog.With("session_id", sessionID)
 
 	session := ctxProcessor.GetObjectContext()
 
 	if !session.IsNonEmptyObject() {
-		slog.Warn("session is empty")
 		return
 	}
 
 	if !payload.PathExists("controllers") || !payload.GetByPath("controllers").IsObject() {
-		slog.Warn("no controllers in payload")
 		return
 	}
 
@@ -253,29 +260,17 @@ func (h *statefunHandler) setSessionController(_ sfplugins.StatefunExecutor, ctx
 			// setup controller
 			controllerID := generateUUID(controllerName + uuid + body.ToString())
 
-			setupPayload.SetByPath("name", easyjson.NewJSON(controllerName))
-			setupPayload.SetByPath("object_id", easyjson.NewJSON(uuid))
-
-			start := time.Now()
-			result, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, controllerSetupFunction, controllerID.String(), &setupPayload, nil)
-			if err := checkRequestError(result, err); err != nil {
-				slog.Warn("Controller setup failed", "error", err)
+			link := outLinkKeyPattern(sessionID, controllerID.String(), _CONTROLLER_TYPE)
+			if _, err := ctxProcessor.GlobalCache.GetValue(link); err == nil {
 				continue
 			}
 
-			if time.Since(start).Milliseconds() > 500 {
-				slog.Warn("client setup controller", "id", sessionID, "ctrl_id", controllerID.String(), "dt", time.Since(start))
-			}
+			setupPayload.SetByPath("name", easyjson.NewJSON(controllerName))
+			setupPayload.SetByPath("object_id", easyjson.NewJSON(uuid))
 
-			if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_session_controller_setup_time", "", []string{"session_id", "controller_id"}); err == nil {
-				gaugeVec.With(prometheus.Labels{
-					"session_id":    sessionID,
-					"controller_id": controllerID.String(),
-				}).Set(float64(time.Since(start).Microseconds()))
-			}
-
-			if err := createObjectsLink(ctxProcessor, sessionID, controllerID.String()); err != nil {
-				slog.Warn(err.Error())
+			err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, controllerSetupFunction, controllerID.String(), &setupPayload, nil)
+			if err != nil {
+				log.Warn("Failed to send signal for controller setup", "error", err)
 				continue
 			}
 		}

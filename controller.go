@@ -3,6 +3,7 @@
 package uilib
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -25,7 +26,7 @@ const (
 	_FUNCTION = "@function"
 )
 
-const controllerSetupFunction = "functions.client.controller.setup"
+const controllerSetupFunction = "functions.ui.app.controller.setup"
 
 /*
 	payload: {
@@ -35,8 +36,8 @@ const controllerSetupFunction = "functions.client.controller.setup"
 	controller_id: {
 		name: string,
 		object_id: string,
+		result_ref: uuid,
 		declaration: {...},
-		result: {...},
 		subscribers: as links
 	},
 */
@@ -46,9 +47,6 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 	payload := ctxProcessor.Payload
 
 	log := slog.With("controller_id", self.ID)
-
-	ctxProcessor.ObjectMutexLock(false)
-	defer ctxProcessor.ObjectMutexUnlock()
 
 	object := ctxProcessor.GetObjectContext()
 	declarationIsEmpty := !object.GetByPath(_CONTROLLER_DECLARATION).IsNonEmptyObject()
@@ -104,12 +102,13 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 
 		controllerName, _ := object.GetByPath("name").AsString()
 		controllerUUID, _ := object.GetByPath("object_id").AsString()
+		resultRef, _ := object.GetByPath("result_ref").AsString()
 
-		if result := object.GetByPath(_CONTROLLER_RESULT); result.IsNonEmptyObject() {
+		if result, _ := ctxProcessor.GlobalCache.GetValueAsJSON(resultRef); result.IsNonEmptyObject() {
 			path := fmt.Sprintf("payload.controllers.%s.%s", controllerName, controllerUUID)
 
 			reply := easyjson.NewJSONObject()
-			reply.SetByPath(path, result)
+			reply.SetByPath(path, *result)
 
 			if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, clientEgressFunction, caller.ID, &reply, nil); err != nil {
 				log.Warn(err.Error())
@@ -118,7 +117,7 @@ func (h *statefunHandler) setupController(_ sfplugins.StatefunExecutor, ctxProce
 	}
 }
 
-const controllerUnsubFunction = "functions.client.controller.unsub"
+const controllerUnsubFunction = "functions.ui.app.controller.unsub"
 
 func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	caller := ctxProcessor.Caller
@@ -143,21 +142,9 @@ func (h *statefunHandler) unsubController(_ sfplugins.StatefunExecutor, ctxProce
 		slog.Warn(err.Error())
 		return
 	}
-
-	ctxProcessor.ObjectMutexLock(false)
-	defer ctxProcessor.ObjectMutexUnlock()
-
-	subs := getChildrenUUIDSByLinkType(ctxProcessor, self.ID, _SUBSCRIBER_TYPE)
-	if len(subs) > 0 {
-		return
-	}
-
-	if err := deleteObject(ctxProcessor, self.ID); err != nil {
-		slog.Warn(err.Error())
-	}
 }
 
-const controllerTriggerFunction = "functions.client.controller.trigger"
+const controllerTriggerFunction = "functions.ui.app.controller.trigger"
 
 func (h *statefunHandler) controllerTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	objectUUID := ctxProcessor.Self.ID
@@ -186,42 +173,31 @@ func (h *statefunHandler) controllerTrigger(_ sfplugins.StatefunExecutor, ctxPro
 	}
 }
 
-const controllerUpdateFunction = "functions.client.controller.update"
+const controllerUpdateFunction = "functions.ui.app.controller.update"
 
 func (h *statefunHandler) updateController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	self := ctxProcessor.Self
 	log := slog.With("controller_id", self.ID)
 
-	ctxProcessor.ObjectMutexLock(false)
-	defer ctxProcessor.ObjectMutexUnlock()
-
 	object := ctxProcessor.GetObjectContext()
 
 	controllerName, _ := object.GetByPath("name").AsString()
 	controllerUUID, _ := object.GetByPath("object_id").AsString()
+	resultRef, _ := object.GetByPath("result_ref").AsString()
 	declaration := object.GetByPath(_CONTROLLER_DECLARATION)
 
-	result, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, controllerConstructCreate, controllerUUID, &declaration, nil)
+	result, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, controllerConstruct, controllerUUID, &declaration, nil)
 	if err != nil {
-		log.Warn("Controller creation construct failed", "error", err)
+		log.Warn("Controller construct failed", "error", err)
 		result = easyjson.NewJSONObject().GetPtr()
 	}
 
 	newControllerResult := result.GetByPath("payload.result")
-	oldControllerResult := object.GetByPath(_CONTROLLER_RESULT)
 
-	if !newControllerResult.IsNonEmptyObject() {
+	result, err = ctxProcessor.Request(sfplugins.GolangLocalRequest, controllerResultCompare, resultRef, &newControllerResult, nil)
+	if err := checkRequestError(result, err); err != nil {
 		return
 	}
-
-	if oldControllerResult.IsNonEmptyObject() &&
-		newControllerResult.IsNonEmptyObject() &&
-		newControllerResult.Equals(oldControllerResult) {
-		return
-	}
-
-	object.SetByPath(_CONTROLLER_RESULT, newControllerResult)
-	ctxProcessor.SetObjectContext(object)
 
 	path := fmt.Sprintf("payload.controllers.%s.%s", controllerName, controllerUUID)
 
@@ -237,7 +213,7 @@ func (h *statefunHandler) updateController(_ sfplugins.StatefunExecutor, ctxProc
 	}
 }
 
-const controllerConstructCreate = "functions.client.controller.construct.create"
+const controllerConstruct = "functions.ui.app.controller.construct"
 
 /*
 @property:<json path>
@@ -247,13 +223,13 @@ const controllerConstructCreate = "functions.client.controller.construct.create"
 @function:getChildren(linkType) - now
 `
 */
-func (h *statefunHandler) createControllerConstruct(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
-	objectID := ctxProcessor.Self.ID
+func (h *statefunHandler) controllerConstruct(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
+	id := ctxProcessor.Self.ID
 	payload := ctxProcessor.Payload
 
 	start := time.Now()
 
-	decorators := parseDecorators(objectID, payload)
+	decorators := parseDecorators(id, payload)
 	construct := easyjson.NewJSONObject()
 
 	for key, cd := range decorators {
@@ -261,25 +237,50 @@ func (h *statefunHandler) createControllerConstruct(_ sfplugins.StatefunExecutor
 		construct.SetByPath(key, result)
 	}
 
-	if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_create_construct", "", []string{"id"}); err == nil {
+	if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_construct", "", []string{"id"}); err == nil {
 		gaugeVec.With(prometheus.Labels{
-			"id": objectID,
+			"id": id,
 		}).Set(float64(time.Since(start).Microseconds()))
 	}
 
 	reply(ctxProcessor, "ok", construct)
 }
 
+const controllerResultCompare = "functions.ui.app.controller.result.compare"
+
+func (h *statefunHandler) controllerResultCompare(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
+	currentResult := ctxProcessor.GetObjectContext()
+	newResult := ctxProcessor.Payload
+
+	if newResult.Equals(*currentResult) {
+		replyError(ctxProcessor, errors.New("same result"))
+		return
+	}
+
+	ctxProcessor.SetObjectContext(newResult)
+
+	replyOk(ctxProcessor)
+}
+
 func initController(ctx *sfplugins.StatefunContextProcessor, id string, payload *easyjson.JSON) error {
 	objectUUID := payload.GetByPath("object_id").AsStringDefault("")
+	controllerResultID := generateUUID(id + "result").String()
 
 	controllerBody := easyjson.NewJSONObject()
 	controllerBody.SetByPath(_CONTROLLER_DECLARATION, payload.GetByPath(_CONTROLLER_DECLARATION))
 	controllerBody.SetByPath("name", payload.GetByPath("name"))
 	controllerBody.SetByPath("object_id", easyjson.NewJSON(objectUUID))
-	controllerBody.SetByPath(_CONTROLLER_RESULT, easyjson.NewJSONObject())
+	controllerBody.SetByPath("result_ref", easyjson.NewJSON(controllerResultID))
 
-	if err := createObject(ctx, id, _CONTROLLER_TYPE, &controllerBody); err != nil {
+	if err := createObject(ctx, id, _CONTROLLER_TYPE, controllerBody); err != nil {
+		return err
+	}
+
+	if err := createObject(ctx, controllerResultID, _CONTROLLER_RESULT_TYPE, easyjson.NewJSONObject()); err != nil {
+		return err
+	}
+
+	if err := createObjectsLink(ctx, id, controllerResultID); err != nil {
 		return err
 	}
 

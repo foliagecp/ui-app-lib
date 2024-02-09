@@ -3,6 +3,7 @@ package uilib
 import (
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/foliagecp/easyjson"
@@ -45,9 +46,21 @@ func (c *controllerFunction) Invoke(ctx *sfplugins.StatefunContextProcessor) eas
 		out := getOutLinkTypes(ctx, c.id)
 		return easyjson.JSONFromArray(out)
 	case "getLinksByType":
+		if len(c.args) != 1 {
+			return easyjson.NewJSON("invalid arguments")
+		}
+
 		lt := c.args[0]
 		out := getLinksByType(ctx, c.id, lt)
-		return easyjson.JSONFromArray(out)
+		return easyjson.NewJSON(out)
+	case "typesNavigation":
+		if len(c.args) != 2 {
+			return easyjson.NewJSON("invalid arguments")
+		}
+
+		forward, _ := strconv.Atoi(c.args[0])
+		backward, _ := strconv.Atoi(c.args[1])
+		return typesNavigation(ctx, c.id, forward, backward)
 	}
 
 	return easyjson.NewJSONObject()
@@ -74,18 +87,16 @@ func parseDecorators(objectID string, payload *easyjson.JSON) map[string]control
 				path: value,
 			}
 		case _FUNCTION:
-			{
-				f, args, err := extractFunctionAndArgs(value)
-				if err != nil {
-					slog.Warn(err.Error())
-					continue
-				}
+			f, args, err := extractFunctionAndArgs(value)
+			if err != nil {
+				slog.Warn(err.Error())
+				continue
+			}
 
-				decorators[key] = &controllerFunction{
-					id:       objectID,
-					function: f,
-					args:     args,
-				}
+			decorators[key] = &controllerFunction{
+				id:       objectID,
+				function: f,
+				args:     args,
 			}
 		default:
 			slog.Warn("parse decorator: unknown decorator", "decorator", decorator)

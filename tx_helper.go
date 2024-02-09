@@ -142,6 +142,10 @@ func (tx *txHelper) initTypes(ctx *sf.StatefunContextProcessor) error {
 		return err
 	}
 
+	if err := tx.createType(ctx, _CONTROLLER_RESULT_TYPE, easyjson.NewJSONObject().GetPtr()); err != nil {
+		return err
+	}
+
 	if err := tx.createTypesLink(ctx, "group", _SESSION_TYPE, _SESSION_TYPE); err != nil {
 		return err
 	}
@@ -151,6 +155,10 @@ func (tx *txHelper) initTypes(ctx *sf.StatefunContextProcessor) error {
 	}
 
 	if err := tx.createTypesLink(ctx, _CONTROLLER_TYPE, _SESSION_TYPE, _SUBSCRIBER_TYPE); err != nil {
+		return err
+	}
+
+	if err := tx.createTypesLink(ctx, _CONTROLLER_TYPE, _CONTROLLER_RESULT_TYPE, _CONTROLLER_RESULT_TYPE); err != nil {
 		return err
 	}
 

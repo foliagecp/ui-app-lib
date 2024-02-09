@@ -14,12 +14,12 @@ import (
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 )
 
-func createObject(ctx *sf.StatefunContextProcessor, objectID, originType string, body *easyjson.JSON) error {
+func createObject(ctx *sf.StatefunContextProcessor, objectID, originType string, body easyjson.JSON) error {
 	const op = "functions.cmdb.api.object.create"
 
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("origin_type", easyjson.NewJSON(originType))
-	payload.SetByPath("body", *body)
+	payload.SetByPath("body", body)
 
 	result, err := ctx.Request(sf.GolangLocalRequest, op, objectID, &payload, nil)
 	if err != nil {
@@ -117,9 +117,10 @@ func deleteObjectsLink(ctx *sf.StatefunContextProcessor, from, to string) error 
 }
 
 type Link struct {
-	Source string `json:"source"`
-	Target string `json:"target"`
-	Type   string `json:"type"`
+	Source string   `json:"source"`
+	Target string   `json:"target"`
+	Type   string   `json:"type,omitempty"`
+	Tags   []string `json:"tags,omitempty"`
 }
 
 func outLinkKeyPattern(id, target string, linkType ...string) string {
@@ -206,7 +207,7 @@ func getOutLinkTypes(ctx *sf.StatefunContextProcessor, uuid string) []string {
 
 		// TODO: use builtin constants
 		switch linkType {
-		case "__object", "__type", "trigger", "controller", "__types", "__objects":
+		case "__object", "__type", "__types", "__objects", _SESSION_TYPE, _CONTROLLER_TYPE, _CONTROLLER_SUBJECT_TYPE, _SUBSCRIBER_TYPE:
 			continue
 		}
 
@@ -235,7 +236,7 @@ func getInOutLinkTypes(ctx *sf.StatefunContextProcessor, uuid string) []string {
 
 		// TODO: use builtin constants
 		switch linkType {
-		case "__object", "__type", "trigger", "controller", "__types", "__objects":
+		case "__object", "__type", "__types", "__objects", _SESSION_TYPE, _CONTROLLER_TYPE, _CONTROLLER_SUBJECT_TYPE, _SUBSCRIBER_TYPE:
 			continue
 		}
 
@@ -256,7 +257,7 @@ func getInOutLinkTypes(ctx *sf.StatefunContextProcessor, uuid string) []string {
 
 		// TODO: use builtin constants
 		switch linkType {
-		case "__object", "__type", "trigger", "controller", "__types", "__objects":
+		case "__object", "__type", "__types", "__objects", _SESSION_TYPE, _CONTROLLER_TYPE, _CONTROLLER_SUBJECT_TYPE, _SUBSCRIBER_TYPE:
 			continue
 		}
 
@@ -290,6 +291,177 @@ func getChildrenUUIDSByLinkType(ctx *sf.StatefunContextProcessor, uuid, filterLi
 	sort.Strings(result)
 
 	return result
+}
+
+func getParentsTypes(ctx *sf.StatefunContextProcessor, uuid string) []string {
+	result := make([]string, 0)
+
+	for _, v := range getParentsUUIDSByLinkType(ctx, uuid, "__type") {
+		if _, err := ctx.GlobalCache.GetValue(outLinkKeyPattern("types", v, "__type")); err != nil {
+			continue
+		}
+
+		result = append(result, v)
+	}
+
+	sort.Strings(result)
+
+	return result
+}
+
+func getParentsUUIDSByLinkType(ctx *sf.StatefunContextProcessor, uuid, filterLinkType string) []string {
+	result := make([]string, 0)
+
+	pattern := inLinkKeyPattern(uuid, ">")
+
+	for _, key := range ctx.GlobalCache.GetKeysByPattern(pattern) {
+		split := strings.Split(key, ".")
+		if len(split) == 0 {
+			continue
+		}
+
+		linkType := split[len(split)-1]
+		if linkType != filterLinkType {
+			continue
+		}
+
+		lastkey := split[len(split)-2]
+		result = append(result, lastkey)
+	}
+
+	sort.Strings(result)
+
+	return result
+}
+
+type typesRouteView struct {
+	Type  string      `json:"type"`
+	Nodes []routeNode `json:"nodes"`
+	Links []Link      `json:"links"`
+}
+
+type routeNode struct {
+	ID      string        `json:"uuid"`
+	Name    string        `json:"name"`
+	Depth   int           `json:"depth"`
+	Objects []routeObject `json:"objects"`
+}
+
+type routeObject struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func typesNavigation(ctx *sf.StatefunContextProcessor, id string, forward, backward int) easyjson.JSON {
+	types := getChildrenUUIDSByLinkType(ctx, id, "__type")
+	if len(types) == 0 {
+		return easyjson.NewJSONObjectWithKeyValue("status", easyjson.NewJSON("failed"))
+	}
+
+	originType := types[0]
+	route := traverseTypesGraph(ctx, originType, forward, backward)
+
+	return easyjson.NewJSON(route)
+}
+
+func traverseTypesGraph(ctx *sf.StatefunContextProcessor, startID string, forward, backward int) typesRouteView {
+	maxForward := forward
+	if forward < 0 {
+		maxForward = 10 // make const
+	}
+
+	maxBackward := backward
+	if backward < 0 {
+		maxBackward = 10 // make const
+	}
+
+	links := make([]Link, 0)
+	nodes := make([]routeNode, 0)
+
+	if maxForward > 0 {
+		stack := []routeNode{
+			{ID: startID, Name: startID, Depth: 0},
+		}
+
+		for len(stack) > 0 {
+			current := stack[0]
+			stack = stack[1:]
+
+			if current.Depth < maxForward {
+				for _, v := range getChildrenUUIDSByLinkType(ctx, current.ID, "__type") {
+					node := routeNode{
+						ID:      v,
+						Name:    v,
+						Depth:   current.Depth + 1,
+						Objects: getTypeObjects(ctx, v),
+					}
+
+					link := Link{
+						Source: current.ID,
+						Target: v,
+					}
+
+					links = append(links, link)
+					nodes = append(nodes, node)
+					stack = append(stack, node)
+				}
+			}
+		}
+	}
+
+	if maxBackward > 0 {
+		stack := []routeNode{
+			{ID: startID, Name: startID, Depth: 0},
+		}
+
+		for len(stack) > 0 {
+			current := stack[0]
+			stack = stack[1:]
+
+			if -current.Depth < maxBackward {
+				for _, v := range getParentsTypes(ctx, current.ID) {
+					node := routeNode{
+						ID:      v,
+						Name:    v,
+						Depth:   current.Depth - 1,
+						Objects: getTypeObjects(ctx, v),
+					}
+
+					link := Link{
+						Source: v,
+						Target: current.ID,
+					}
+
+					links = append(links, link)
+					nodes = append(nodes, node)
+					stack = append(stack, node)
+				}
+			}
+		}
+	}
+
+	fmt.Printf("nodes: %v\n", nodes)
+	fmt.Printf("links: %v\n", links)
+
+	return typesRouteView{
+		Type:  startID,
+		Links: links,
+		Nodes: nodes,
+	}
+}
+
+func getTypeObjects(ctx *sf.StatefunContextProcessor, typeID string) []routeObject {
+	keys := getChildrenUUIDSByLinkType(ctx, typeID, "__object")
+	objects := make([]routeObject, 0, len(keys))
+
+	for _, object := range keys {
+		objects = append(objects, routeObject{
+			Name: object,
+			ID:   object,
+		})
+	}
+
+	return objects
 }
 
 func replyOk(ctx *sf.StatefunContextProcessor) {

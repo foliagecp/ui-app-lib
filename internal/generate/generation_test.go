@@ -1,4 +1,4 @@
-package uilib
+package generate
 
 import (
 	"crypto/md5"

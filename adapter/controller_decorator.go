@@ -1,4 +1,4 @@
-package uilib
+package adapter
 
 import (
 	"fmt"
@@ -8,6 +8,13 @@ import (
 
 	"github.com/foliagecp/easyjson"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
+	"github.com/foliagecp/ui-app-lib/internal/common"
+)
+
+// decorators
+const (
+	_PROPERTY = "@property"
+	_FUNCTION = "@function"
 )
 
 type controllerDecorator interface {
@@ -37,13 +44,13 @@ func (c *controllerFunction) Invoke(ctx *sfplugins.StatefunContextProcessor) eas
 			lt = c.args[0]
 		}
 
-		children := getChildrenUUIDSByLinkType(ctx, c.id, lt)
+		children := common.GetChildrenUUIDSByLinkType(ctx, c.id, lt)
 		return easyjson.JSONFromArray(children)
 	case "getInOutLinkTypes":
-		out := getInOutLinkTypes(ctx, c.id)
+		out := common.GetInOutLinkTypes(ctx, c.id)
 		return easyjson.JSONFromArray(out)
 	case "getOutLinkTypes":
-		out := getOutLinkTypes(ctx, c.id)
+		out := common.GetOutLinkTypes(ctx, c.id)
 		return easyjson.JSONFromArray(out)
 	case "getLinksByType":
 		if len(c.args) != 1 {
@@ -51,7 +58,7 @@ func (c *controllerFunction) Invoke(ctx *sfplugins.StatefunContextProcessor) eas
 		}
 
 		lt := c.args[0]
-		out := getLinksByType(ctx, c.id, lt)
+		out := common.GetLinksByType(ctx, c.id, lt)
 		return easyjson.NewJSON(out)
 	case "typesNavigation":
 		if len(c.args) != 2 {
@@ -60,7 +67,7 @@ func (c *controllerFunction) Invoke(ctx *sfplugins.StatefunContextProcessor) eas
 
 		forward, _ := strconv.Atoi(c.args[0])
 		backward, _ := strconv.Atoi(c.args[1])
-		return typesNavigation(ctx, c.id, forward, backward)
+		return common.TypesNavigation(ctx, c.id, forward, backward)
 	}
 
 	return easyjson.NewJSONObject()

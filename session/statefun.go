@@ -6,13 +6,12 @@ import (
 	"time"
 
 	"github.com/foliagecp/easyjson"
+	"github.com/foliagecp/sdk/embedded/graph/crud"
 	"github.com/foliagecp/sdk/statefun"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
-	"github.com/foliagecp/sdk/statefun/system"
 	"github.com/foliagecp/ui-app-lib/internal/common"
 	"github.com/foliagecp/ui-app-lib/internal/generate"
-	internalStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
-	"github.com/prometheus/client_golang/prometheus"
+	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 )
 
 const (
@@ -22,9 +21,30 @@ const (
 )
 
 func RegisterFunctions(runtime *statefun.Runtime) {
-	statefun.NewFunctionType(runtime, internalStatefun.INGRESS, ingress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, internalStatefun.SESSION_CONTROL, sessionControl, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, internalStatefun.PREPARE_EGRESS, prepareEgress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.INGRESS, ingress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_CONTROL, sessionControl, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.PREPARE_EGRESS, prepareEgress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.EGRESS, egress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+
+	if runtime.Domain.Name() == runtime.Domain.HubDomainName() {
+		runtime.RegisterOnAfterStartFunction(initSchema, false)
+	}
+}
+
+func initSchema(runtime *statefun.Runtime) error {
+	if err := common.CreateType(runtime, inStatefun.SESSION_TYPE, easyjson.NewJSONObject()); err != nil {
+		return err
+	}
+
+	if err := common.CreateTypesLink(runtime, runtime.Domain.CreateObjectIDWithHubDomain(crud.BUILT_IN_TYPE_GROUP, false), inStatefun.SESSION_TYPE, inStatefun.SESSION_TYPE); err != nil {
+		return err
+	}
+
+	if err := common.CreateObject(runtime, inStatefun.SESSIONS_ENTYPOINT, runtime.Domain.CreateObjectIDWithHubDomain(crud.BUILT_IN_TYPE_GROUP, false), easyjson.NewJSONObject()); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 /*
@@ -45,14 +65,9 @@ func ingress(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunConte
 	payload := ctxProcessor.Payload
 	sessionID := generate.SessionID(id)
 
-	// if err := checkTypes(ctxProcessor); err != nil {
-	// 	slog.Warn(err.Error())
-	// 	return
-	// }
-
 	payload.SetByPath("client_id", easyjson.NewJSON(id))
 
-	if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, internalStatefun.SESSION_CONTROL, sessionID.String(), payload, nil); err != nil {
+	if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.SESSION_CONTROL, sessionID.String(), payload, nil); err != nil {
 		slog.Warn(err.Error())
 	}
 }
@@ -69,10 +84,11 @@ func ingress(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunConte
 		}
 	}
 */
-func sessionControl(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
-	sessionID := ctxProcessor.Self.ID
-	payload := ctxProcessor.Payload
-	params := ctxProcessor.GetObjectContext()
+func sessionControl(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
+	sessionID := ctx.Self.ID
+	payload := ctx.Payload
+	params := ctx.GetObjectContext()
+	sCtx := common.NewStatefunContext(ctx)
 
 	log := slog.With("session_id", sessionID)
 
@@ -86,22 +102,18 @@ func sessionControl(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.Statef
 		body.SetByPath("last_activity_time", easyjson.NewJSON(now.UnixNano()))
 		body.SetByPath("client_id", payload.GetByPath("client_id"))
 
-		if err := common.CreateObject(ctxProcessor, sessionID, internalStatefun.SESSION_TYPE, body); err != nil {
+		if err := common.CreateObject(sCtx, sessionID, inStatefun.SESSION_TYPE, body); err != nil {
 			log.Warn(err.Error())
 			return
 		}
 
-		if err := common.CreateObjectsLink(ctxProcessor, internalStatefun.SESSIONS_ENTYPOINT, sessionID); err != nil {
+		if err := common.CreateObjectsLink(sCtx, inStatefun.SESSIONS_ENTYPOINT, sessionID, sessionID); err != nil {
 			log.Warn(err.Error())
 			return
 		}
 
 		if time.Since(now).Seconds() > 1 {
 			log.Warn("session create", "time", time.Since(now))
-		}
-
-		if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_session_creation_time", "", []string{"id"}); err == nil {
-			gaugeVec.With(prometheus.Labels{"id": sessionID}).Set(float64(time.Since(now).Microseconds()))
 		}
 	}
 
@@ -113,18 +125,18 @@ func sessionControl(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.Statef
 
 	switch {
 	case in.Command != "":
-		processSessionCommand(ctxProcessor, in.Command)
+		processSessionCommand(ctx, in.Command)
 	case len(in.Controllers) > 0:
-		processSessionControllers(ctxProcessor, in.Controllers)
+		processSessionControllers(ctx, in.Controllers)
 	default:
 		return
 	}
 }
 
-func prepareEgress(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
-	payload := ctxProcessor.Payload
-	session := ctxProcessor.GetObjectContext()
-	log := slog.With("session_id", ctxProcessor.Self.ID)
+func prepareEgress(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
+	payload := ctx.Payload
+	session := ctx.GetObjectContext()
+	log := slog.With("session_id", ctx.Self.ID)
 
 	clientID := session.GetByPath("client_id").AsStringDefault("")
 
@@ -138,7 +150,15 @@ func prepareEgress(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.Statefu
 		egressPayload = payload.GetByPath("payload").GetPtr()
 	}
 
-	if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, internalStatefun.EGRESS, clientID, egressPayload, nil); err != nil {
+	if err := ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.EGRESS, clientID, egressPayload, nil); err != nil {
+		log.Warn(err.Error())
+	}
+}
+
+func egress(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
+	log := slog.With("id", ctx.Self.ID)
+
+	if err := ctx.Egress(sfplugins.NatsCoreEgress, ctx.Payload); err != nil {
 		log.Warn(err.Error())
 	}
 }
@@ -149,17 +169,14 @@ func processSessionCommand(ctx *sfplugins.StatefunContextProcessor, cmd string) 
 
 	switch cmd {
 	case "info":
-		session := ctx.GetObjectContext()
-		session.SetByPath("controllers", easyjson.JSONFromArray(common.GetChildrenUUIDSByLinkType(ctx, sessionID, internalStatefun.CONTROLLER_TYPE)))
-
-		if err := ctx.Signal(sfplugins.JetstreamGlobalSignal, internalStatefun.PREPARE_EGRESS, sessionID, session, nil); err != nil {
+		if err := ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.PREPARE_EGRESS, sessionID, ctx.GetObjectContext(), nil); err != nil {
 			log.Warn("Failed to send into egress", "error", err.Error())
 		}
 	case "unsub":
-		controllers := common.GetChildrenUUIDSByLinkType(ctx, sessionID, internalStatefun.CONTROLLER_TYPE)
+		controllers := common.GetChildrenUUIDSByLinkType(ctx, sessionID, inStatefun.CONTROLLER_TYPE)
 
 		for _, controllerUUID := range controllers {
-			result, err := ctx.Request(sfplugins.AutoSelect, internalStatefun.CONTROLLER_UNSUB, controllerUUID, easyjson.NewJSONObject().GetPtr(), nil)
+			result, err := ctx.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_UNSUB, controllerUUID, easyjson.NewJSONObject().GetPtr(), nil)
 			if err := common.CheckRequestError(result, err); err != nil {
 				log.Warn("Controller unsub failed", "error", err)
 			}
@@ -168,7 +185,7 @@ func processSessionCommand(ctx *sfplugins.StatefunContextProcessor, cmd string) 
 		unsubPayload := easyjson.NewJSONObject()
 		unsubPayload.SetByPath("payload.command", easyjson.NewJSON("unsub"))
 		unsubPayload.SetByPath("payload.status", easyjson.NewJSON("ok"))
-		if err := ctx.Signal(sfplugins.JetstreamGlobalSignal, internalStatefun.PREPARE_EGRESS, sessionID, &unsubPayload, nil); err != nil {
+		if err := ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.PREPARE_EGRESS, sessionID, &unsubPayload, nil); err != nil {
 			log.Warn("Failed to send into egress", "error", err.Error())
 		}
 	}
@@ -185,16 +202,16 @@ func processSessionControllers(ctx *sfplugins.StatefunContextProcessor, controll
 		for _, uuid := range controller.UUIDs {
 			// setup controller
 			controllerID := generate.UUID(controllerName + uuid + body.ToString())
-
-			link := common.OutLinkKeyPattern(sessionID, controllerID.String(), internalStatefun.CONTROLLER_TYPE)
-			if _, err := ctx.GlobalCache.GetValue(link); err == nil {
-				continue
-			}
+			controllerIDWithDomain := ctx.Domain.CreateObjectIDWithDomain(ctx.Domain.GetDomainFromObjectID(uuid), controllerID.String(), false)
+			// link := common.OutTargetLink(sessionID, controllerID.String())
+			// if _, err := ctx.Domain.Cache().GetValue(link); err == nil {
+			// 	continue
+			// }
 
 			setupPayload.SetByPath("name", easyjson.NewJSON(controllerName))
 			setupPayload.SetByPath("object_id", easyjson.NewJSON(uuid))
 
-			err := ctx.Signal(sfplugins.JetstreamGlobalSignal, internalStatefun.CONTROLLER_SETUP, controllerID.String(), &setupPayload, nil)
+			err := ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.CONTROLLER_SETUP, controllerIDWithDomain, &setupPayload, nil)
 			if err != nil {
 				log.Warn("Failed to send signal for controller setup", "error", err)
 				continue

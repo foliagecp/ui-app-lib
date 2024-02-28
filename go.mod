@@ -4,9 +4,8 @@ go 1.21.0
 
 require (
 	github.com/foliagecp/easyjson v0.1.0
-	github.com/foliagecp/sdk v0.1.3-0.20240213233921-4f31dab3958e
+	github.com/foliagecp/sdk v0.1.3-0.20240227061915-01efbe3614e0
 	github.com/google/uuid v1.4.0
-	github.com/prometheus/client_golang v1.17.0
 )
 
 require (
@@ -18,6 +17,7 @@ require (
 	github.com/nats-io/nats.go v1.32.0 // indirect
 	github.com/nats-io/nkeys v0.4.7 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
+	github.com/prometheus/client_golang v1.17.0 // indirect
 	github.com/prometheus/client_model v0.4.1-0.20230718164431-9a2bf3000d16 // indirect
 	github.com/prometheus/common v0.44.0 // indirect
 	github.com/prometheus/procfs v0.11.1 // indirect

@@ -1,127 +1,159 @@
 package common
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/embedded/graph/crud"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 )
 
-func CreateObject(ctx *sf.StatefunContextProcessor, objectID, originType string, body easyjson.JSON) error {
+type StatefunClient interface {
+	Request(requestProvider sf.RequestProvider, typename, id string, payload, options *easyjson.JSON) (*easyjson.JSON, error)
+}
+
+func CreateObject(c StatefunClient, objectID, originType string, body easyjson.JSON) error {
 	const op = "functions.cmdb.api.object.create"
 
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("origin_type", easyjson.NewJSON(originType))
 	payload.SetByPath("body", body)
 
-	result, err := ctx.Request(sf.AutoSelect, op, objectID, &payload, nil)
+	result, err := c.Request(sf.AutoRequestSelect, op, objectID, &payload, nil)
 	if err != nil {
 		return err
 	}
 
-	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
-		return fmt.Errorf("%v", result.GetByPath("payload.result"))
+	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
+		return fmt.Errorf("%v", result.GetByPath("details"))
 	}
 
 	return nil
 }
 
-func DeleteObject(ctx *sf.StatefunContextProcessor, id string) error {
+func CreateType(c StatefunClient, name string, body easyjson.JSON) error {
+	const op = "functions.cmdb.api.type.create"
+
+	payload := easyjson.NewJSONObject()
+	payload.SetByPath("body", body)
+
+	result, err := c.Request(sf.AutoRequestSelect, op, name, &payload, nil)
+	if err != nil {
+		return err
+	}
+
+	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
+		return fmt.Errorf("%v", result.GetByPath("details"))
+	}
+
+	return nil
+}
+
+func DeleteObject(c StatefunClient, id string) error {
 	const op = "functions.cmdb.api.object.delete"
 
 	payload := easyjson.NewJSONObject()
-	result, err := ctx.Request(sf.AutoSelect, op, id, &payload, nil)
+	result, err := c.Request(sf.AutoRequestSelect, op, id, &payload, nil)
 	if err != nil {
 		return err
 	}
 
-	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
-		return fmt.Errorf("%v", result.GetByPath("payload.result"))
+	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
+		return fmt.Errorf("%v", result.GetByPath("details"))
 	}
 
 	return nil
 }
 
-func CreateObjectsLink(ctx *sf.StatefunContextProcessor, from, to string) error {
+func CreateObjectsLink(c StatefunClient, from, to, name string) error {
 	const op = "functions.cmdb.api.objects.link.create"
 
-	pattern := fmt.Sprintf(crud.InLinkKeyPrefPattern+crud.LinkKeySuff2Pattern, to, from, ">")
-	if keys := ctx.GlobalCache.GetKeysByPattern(pattern); len(keys) > 0 {
-		return nil
-	}
-
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("to", easyjson.NewJSON(to))
+	payload.SetByPath("name", easyjson.NewJSON(name))
 	payload.SetByPath("body", easyjson.NewJSONObject())
 
-	result, err := ctx.Request(sf.AutoSelect, op, from, &payload, nil)
+	result, err := c.Request(sf.AutoRequestSelect, op, from, &payload, nil)
 	if err != nil {
 		return err
 	}
 
-	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
-		return fmt.Errorf("%v", result.GetByPath("payload.result"))
+	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
+		return fmt.Errorf("%v", result.GetByPath("details"))
 	}
 
 	return nil
 }
 
-func CreateTypesLink(ctx *sf.StatefunContextProcessor, from, to, objectLinkType string) error {
+func CreateTypesLink(c StatefunClient, from, to, objectLinkType string) error {
 	const op = "functions.cmdb.api.types.link.create"
-
-	link := OutLinkKeyPattern(from, to, "__type")
-	if _, err := ctx.GlobalCache.GetValue(link); err == nil {
-		return nil
-	}
 
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("to", easyjson.NewJSON(to))
 	payload.SetByPath("body", easyjson.NewJSONObject())
-	payload.SetByPath("object_link_type", easyjson.NewJSON(objectLinkType))
+	payload.SetByPath("object_type", easyjson.NewJSON(objectLinkType))
 
-	result, err := ctx.Request(sf.AutoSelect, op, from, &payload, nil)
+	result, err := c.Request(sf.AutoRequestSelect, op, from, &payload, nil)
 	if err != nil {
 		return fmt.Errorf("create types link request: %w", err)
 	}
 
-	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
-		return fmt.Errorf("create types link: %v", result.GetByPath("payload.result"))
+	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
+		details, _ := result.GetByPath("details").AsString()
+		if strings.Contains(details, "already exists") {
+			return nil
+		}
+
+		return fmt.Errorf("create types link: %v", details)
 	}
 
 	return nil
 }
 
-func DeleteObjectsLink(ctx *sf.StatefunContextProcessor, from, to string) error {
+func DeleteObjectsLink(c StatefunClient, from, to string) error {
 	const op = "functions.cmdb.api.objects.link.delete"
 
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("to", easyjson.NewJSON(to))
 
-	result, err := ctx.Request(sf.AutoSelect, op, from, &payload, nil)
+	result, err := c.Request(sf.AutoRequestSelect, op, from, &payload, nil)
 	if err != nil {
 		return err
 	}
 
-	if result.GetByPath("payload.status").AsStringDefault("failed") == "failed" {
-		return fmt.Errorf("%v", result.GetByPath("payload.result"))
+	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
+		return fmt.Errorf("%v", result.GetByPath("details"))
 	}
 
 	return nil
 }
 
-func OutLinkKeyPattern(id, target string, linkType ...string) string {
-	if len(linkType) > 0 {
-		lt := linkType[0]
+func FindObjectType(c StatefunClient, id string) (string, error) {
+	const op = "functions.cmdb.api.find_object_type"
 
-		return fmt.Sprintf(crud.OutLinkBodyKeyPrefPattern+crud.LinkKeySuff2Pattern,
-			id, lt, target,
-		)
+	result, err := c.Request(sf.AutoRequestSelect, op, id, nil, nil)
+	if err != nil {
+		return "", err
 	}
 
-	return fmt.Sprintf(crud.OutLinkBodyKeyPrefPattern+crud.LinkKeySuff1Pattern,
-		id, target,
-	)
+	if t, ok := result.GetByPath("data.type").AsString(); ok {
+		return t, nil
+	}
+
+	return "", errors.New("undefined type")
+}
+
+func OutTargetLink(source, linkname string) string {
+	return fmt.Sprintf(crud.OutLinkTargetKeyPrefPattern+crud.LinkKeySuff1Pattern, source, linkname)
+}
+
+func OutLinkType(source, ltype string, target ...string) string {
+	if len(target) > 0 {
+		return fmt.Sprintf(crud.OutLinkTypeKeyPrefPattern+crud.LinkKeySuff2Pattern, source, ltype, target[0])
+	}
+	return fmt.Sprintf(crud.OutLinkTypeKeyPrefPattern+crud.LinkKeySuff1Pattern, source, ltype)
 }
 
 func InLinkKeyPattern(id, target string, linkType ...string) string {

@@ -1,12 +1,20 @@
-package uilib
+package adapter
 
 import (
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/foliagecp/easyjson"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
+	"github.com/foliagecp/ui-app-lib/internal/common"
+)
+
+// decorators
+const (
+	_PROPERTY = "@property"
+	_FUNCTION = "@function"
 )
 
 type controllerDecorator interface {
@@ -36,18 +44,30 @@ func (c *controllerFunction) Invoke(ctx *sfplugins.StatefunContextProcessor) eas
 			lt = c.args[0]
 		}
 
-		children := getChildrenUUIDSByLinkType(ctx, c.id, lt)
+		children := common.GetChildrenUUIDSByLinkType(ctx, c.id, lt)
 		return easyjson.JSONFromArray(children)
 	case "getInOutLinkTypes":
-		out := getInOutLinkTypes(ctx, c.id)
+		out := common.GetInOutLinkTypes(ctx, c.id)
 		return easyjson.JSONFromArray(out)
 	case "getOutLinkTypes":
-		out := getOutLinkTypes(ctx, c.id)
+		out := common.GetOutLinkTypes(ctx, c.id)
 		return easyjson.JSONFromArray(out)
 	case "getLinksByType":
+		if len(c.args) != 1 {
+			return easyjson.NewJSON("invalid arguments")
+		}
+
 		lt := c.args[0]
-		out := getLinksByType(ctx, c.id, lt)
-		return easyjson.JSONFromArray(out)
+		out := common.GetLinksByType(ctx, c.id, lt)
+		return easyjson.NewJSON(out)
+	case "typesNavigation":
+		if len(c.args) != 2 {
+			return easyjson.NewJSON("invalid arguments")
+		}
+
+		forward, _ := strconv.Atoi(c.args[0])
+		backward, _ := strconv.Atoi(c.args[1])
+		return common.TypesNavigation(ctx, c.id, forward, backward)
 	}
 
 	return easyjson.NewJSONObject()
@@ -74,18 +94,16 @@ func parseDecorators(objectID string, payload *easyjson.JSON) map[string]control
 				path: value,
 			}
 		case _FUNCTION:
-			{
-				f, args, err := extractFunctionAndArgs(value)
-				if err != nil {
-					slog.Warn(err.Error())
-					continue
-				}
+			f, args, err := extractFunctionAndArgs(value)
+			if err != nil {
+				slog.Warn(err.Error())
+				continue
+			}
 
-				decorators[key] = &controllerFunction{
-					id:       objectID,
-					function: f,
-					args:     args,
-				}
+			decorators[key] = &controllerFunction{
+				id:       objectID,
+				function: f,
+				args:     args,
 			}
 		default:
 			slog.Warn("parse decorator: unknown decorator", "decorator", decorator)

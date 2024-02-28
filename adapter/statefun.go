@@ -10,11 +10,9 @@ import (
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/statefun"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
-	"github.com/foliagecp/sdk/statefun/system"
 	"github.com/foliagecp/ui-app-lib/internal/common"
 	"github.com/foliagecp/ui-app-lib/internal/generate"
-	internalStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
-	"github.com/prometheus/client_golang/prometheus"
+	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 )
 
 const (
@@ -23,12 +21,38 @@ const (
 )
 
 func RegisterFunctions(runtime *statefun.Runtime) {
-	statefun.NewFunctionType(runtime, internalStatefun.CONTROLLER_SETUP, setupController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, internalStatefun.CONTROLLER_UNSUB, unsubController, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, internalStatefun.CONTROLLER_CONSTRUCT, controllerConstruct, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, internalStatefun.CONTROLLER_RESULT_COMPARE, controllerResultCompare, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, internalStatefun.CONTROLLER_UPDATE, updateController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, internalStatefun.CONTROLLER_TRIGGER, controllerTrigger, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_SETUP, setupController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_UNSUB, unsubController, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CONSTRUCT, controllerConstruct, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetAllowedRequestProviders(sfplugins.AutoRequestSelect))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_RESULT_COMPARE, controllerResultCompare, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetAllowedRequestProviders(sfplugins.AutoRequestSelect))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_UPDATE, updateController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_TRIGGER, controllerTrigger, *statefun.NewFunctionTypeConfig())
+
+	runtime.RegisterOnAfterStartFunction(initSchema, false)
+}
+
+func initSchema(runtime *statefun.Runtime) error {
+	if err := common.CreateType(runtime, inStatefun.CONTROLLER_TYPE, easyjson.NewJSONObject()); err != nil {
+		return err
+	}
+
+	if err := common.CreateType(runtime, inStatefun.CONTROLLER_RESULT_TYPE, easyjson.NewJSONObject()); err != nil {
+		return err
+	}
+
+	if err := common.CreateTypesLink(runtime, runtime.Domain.CreateObjectIDWithHubDomain(inStatefun.SESSION_TYPE, false), inStatefun.CONTROLLER_TYPE, inStatefun.CONTROLLER_TYPE); err != nil {
+		return err
+	}
+
+	if err := common.CreateTypesLink(runtime, inStatefun.CONTROLLER_TYPE, runtime.Domain.CreateObjectIDWithHubDomain(inStatefun.SESSION_TYPE, false), inStatefun.SUBSCRIBER_TYPE); err != nil {
+		return err
+	}
+
+	if err := common.CreateTypesLink(runtime, inStatefun.CONTROLLER_TYPE, inStatefun.CONTROLLER_RESULT_TYPE, inStatefun.CONTROLLER_RESULT_TYPE); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 /*
@@ -44,30 +68,31 @@ func RegisterFunctions(runtime *statefun.Runtime) {
 		subscribers: as links
 	},
 */
-func setupController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
-	self := ctxProcessor.Self
-	caller := ctxProcessor.Caller
-	payload := ctxProcessor.Payload
+func setupController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
+	self := ctx.Self
+	caller := ctx.Caller
+	payload := ctx.Payload
+	sCtx := common.NewStatefunContext(ctx)
 
 	log := slog.With("controller_id", self.ID)
 
-	object := ctxProcessor.GetObjectContext()
+	object := ctx.GetObjectContext()
 	declarationIsEmpty := !object.GetByPath(_CONTROLLER_DECLARATION).IsNonEmptyObject()
 
 	if declarationIsEmpty {
 		start := time.Now()
 
-		if err := initController(ctxProcessor, self.ID, payload); err != nil {
+		if err := initController(sCtx, self.ID, payload); err != nil {
 			log.Warn(err.Error())
 			return
 		}
 
-		if err := common.CreateObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
+		if err := common.CreateObjectsLink(sCtx, self.ID, caller.ID, caller.ID); err != nil {
 			log.Warn(err.Error())
 			return
 		}
 
-		if err := common.CreateObjectsLink(ctxProcessor, caller.ID, self.ID); err != nil {
+		if err := common.CreateObjectsLink(sCtx, caller.ID, self.ID, self.ID); err != nil {
 			log.Warn(err.Error())
 			return
 		}
@@ -76,16 +101,12 @@ func setupController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.State
 			log.Warn("create controller", "dt", time.Since(start))
 		}
 
-		// if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_creation_time", "", []string{"id"}); err == nil {
-		// 	gaugeVec.With(prometheus.Labels{"id": self.ID}).Set(float64(time.Since(start).Microseconds()))
-		// }
-
 		updatePayload := easyjson.NewJSONObject()
-		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, internalStatefun.CONTROLLER_UPDATE, self.ID, &updatePayload, nil); err != nil {
+		if err := ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.CONTROLLER_UPDATE, self.ID, &updatePayload, nil); err != nil {
 			log.Warn(err.Error())
 		}
 	} else {
-		subscribers := common.GetChildrenUUIDSByLinkType(ctxProcessor, self.ID, internalStatefun.SUBSCRIBER_TYPE)
+		subscribers := common.GetChildrenUUIDSByLinkType(ctx, self.ID, inStatefun.SUBSCRIBER_TYPE)
 
 		for _, v := range subscribers {
 			if v == caller.ID {
@@ -93,12 +114,12 @@ func setupController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.State
 			}
 		}
 
-		if err := common.CreateObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
+		if err := common.CreateObjectsLink(sCtx, self.ID, caller.ID, caller.ID); err != nil {
 			log.Warn(err.Error())
 			return
 		}
 
-		if err := common.CreateObjectsLink(ctxProcessor, caller.ID, self.ID); err != nil {
+		if err := common.CreateObjectsLink(sCtx, caller.ID, self.ID, caller.ID); err != nil {
 			log.Warn(err.Error())
 			return
 		}
@@ -107,13 +128,13 @@ func setupController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.State
 		controllerUUID, _ := object.GetByPath("object_id").AsString()
 		resultRef, _ := object.GetByPath("result_ref").AsString()
 
-		if result, _ := ctxProcessor.GlobalCache.GetValueAsJSON(resultRef); result.IsNonEmptyObject() {
+		if result, _ := ctx.Domain.Cache().GetValueAsJSON(resultRef); result.IsNonEmptyObject() {
 			path := fmt.Sprintf("payload.controllers.%s.%s", controllerName, controllerUUID)
 
 			reply := easyjson.NewJSONObject()
 			reply.SetByPath(path, *result)
 
-			if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, internalStatefun.PREPARE_EGRESS, caller.ID, &reply, nil); err != nil {
+			if err := ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.PREPARE_EGRESS, caller.ID, &reply, nil); err != nil {
 				log.Warn(err.Error())
 			}
 		}
@@ -123,23 +144,16 @@ func setupController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.State
 func unsubController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	caller := ctxProcessor.Caller
 	self := ctxProcessor.Self
+	sCtx := common.NewStatefunContext(ctxProcessor)
 
 	defer common.ReplyOk(ctxProcessor)
 
-	start := time.Now()
-
-	defer func() {
-		if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_unsub_time", "", []string{"id"}); err == nil {
-			gaugeVec.With(prometheus.Labels{"id": self.ID}).Set(float64(time.Since(start).Microseconds()))
-		}
-	}()
-
-	if err := common.DeleteObjectsLink(ctxProcessor, self.ID, caller.ID); err != nil {
+	if err := common.DeleteObjectsLink(sCtx, self.ID, caller.ID); err != nil {
 		slog.Warn(err.Error())
 		return
 	}
 
-	if err := common.DeleteObjectsLink(ctxProcessor, caller.ID, self.ID); err != nil {
+	if err := common.DeleteObjectsLink(sCtx, caller.ID, self.ID); err != nil {
 		slog.Warn(err.Error())
 		return
 	}
@@ -149,15 +163,9 @@ func controllerTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.Sta
 	objectUUID := ctxProcessor.Self.ID
 	pattern := common.InLinkKeyPattern(objectUUID, ">")
 
-	for _, v := range ctxProcessor.GlobalCache.GetKeysByPattern(pattern) {
+	for _, v := range ctxProcessor.Domain.Cache().GetKeysByPattern(pattern) {
 		s := strings.Split(v, ".")
 		if len(s) == 0 {
-			continue
-		}
-
-		lt := s[len(s)-1]
-
-		if lt != internalStatefun.CONTROLLER_SUBJECT_TYPE {
 			continue
 		}
 
@@ -165,7 +173,7 @@ func controllerTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.Sta
 
 		updatePayload := easyjson.NewJSONObject()
 		err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal,
-			internalStatefun.CONTROLLER_UPDATE, controllerID, &updatePayload, nil)
+			inStatefun.CONTROLLER_UPDATE, controllerID, &updatePayload, nil)
 		if err != nil {
 			slog.Warn(err.Error())
 		}
@@ -183,16 +191,17 @@ func updateController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.Stat
 	resultRef, _ := object.GetByPath("result_ref").AsString()
 	declaration := object.GetByPath(_CONTROLLER_DECLARATION)
 
-	result, err := ctxProcessor.Request(sfplugins.GolangLocalRequest, internalStatefun.CONTROLLER_CONSTRUCT, controllerUUID, &declaration, nil)
+	result, err := ctxProcessor.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_CONSTRUCT, controllerUUID, &declaration, nil)
 	if err != nil {
 		log.Warn("Controller construct failed", "error", err)
 		result = easyjson.NewJSONObject().GetPtr()
 	}
 
-	newControllerResult := result.GetByPath("payload.result")
+	newControllerResult := result.GetByPath("result")
 
-	result, err = ctxProcessor.Request(sfplugins.GolangLocalRequest, internalStatefun.CONTROLLER_RESULT_COMPARE, resultRef, &newControllerResult, nil)
+	result, err = ctxProcessor.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_RESULT_COMPARE, resultRef, &newControllerResult, nil)
 	if err := common.CheckRequestError(result, err); err != nil {
+		log.Warn(err.Error())
 		return
 	}
 
@@ -201,10 +210,10 @@ func updateController(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.Stat
 	updateReply := easyjson.NewJSONObject()
 	updateReply.SetByPath(path, newControllerResult)
 
-	subscribers := common.GetChildrenUUIDSByLinkType(ctxProcessor, self.ID, internalStatefun.SUBSCRIBER_TYPE)
+	subscribers := common.GetChildrenUUIDSByLinkType(ctxProcessor, self.ID, inStatefun.SUBSCRIBER_TYPE)
 
 	for _, subID := range subscribers {
-		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, internalStatefun.PREPARE_EGRESS, subID, &updateReply, nil); err != nil {
+		if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.PREPARE_EGRESS, subID, &updateReply, nil); err != nil {
 			slog.Warn(err.Error())
 		}
 	}
@@ -222,20 +231,12 @@ func controllerConstruct(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.S
 	id := ctxProcessor.Self.ID
 	payload := ctxProcessor.Payload
 
-	start := time.Now()
-
 	decorators := parseDecorators(id, payload)
 	construct := easyjson.NewJSONObject()
 
 	for key, cd := range decorators {
 		result := cd.Invoke(ctxProcessor)
 		construct.SetByPath(key, result)
-	}
-
-	if gaugeVec, err := system.GlobalPrometrics.EnsureGaugeVecSimple("ui_controller_construct", "", []string{"id"}); err == nil {
-		gaugeVec.With(prometheus.Labels{
-			"id": id,
-		}).Set(float64(time.Since(start).Microseconds()))
 	}
 
 	common.Reply(ctxProcessor, "ok", construct)
@@ -255,9 +256,9 @@ func controllerResultCompare(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 	common.ReplyOk(ctxProcessor)
 }
 
-func initController(ctx *sfplugins.StatefunContextProcessor, id string, payload *easyjson.JSON) error {
+func initController(ctx *common.StatefunContext, id string, payload *easyjson.JSON) error {
 	objectUUID := payload.GetByPath("object_id").AsStringDefault("")
-	controllerResultID := generate.UUID(id + "result").String()
+	controllerResultID := ctx.Domain.CreateObjectIDWithThisDomain(generate.UUID(id+"result").String(), false)
 
 	controllerBody := easyjson.NewJSONObject()
 	controllerBody.SetByPath(_CONTROLLER_DECLARATION, payload.GetByPath(_CONTROLLER_DECLARATION))
@@ -265,38 +266,36 @@ func initController(ctx *sfplugins.StatefunContextProcessor, id string, payload 
 	controllerBody.SetByPath("object_id", easyjson.NewJSON(objectUUID))
 	controllerBody.SetByPath("result_ref", easyjson.NewJSON(controllerResultID))
 
-	if err := common.CreateObject(ctx, id, internalStatefun.CONTROLLER_TYPE, controllerBody); err != nil {
-		return err
+	if err := common.CreateObject(ctx, id, inStatefun.CONTROLLER_TYPE, controllerBody); err != nil {
+		return fmt.Errorf("create controller: %w", err)
 	}
 
-	if err := common.CreateObject(ctx, controllerResultID, internalStatefun.CONTROLLER_RESULT_TYPE, easyjson.NewJSONObject()); err != nil {
-		return err
+	if err := common.CreateObject(ctx, controllerResultID, inStatefun.CONTROLLER_RESULT_TYPE, easyjson.NewJSONObject()); err != nil {
+		return fmt.Errorf("create controller result %s: %w", controllerResultID, err)
 	}
 
-	if err := common.CreateObjectsLink(ctx, id, controllerResultID); err != nil {
-		return err
+	if err := common.CreateObjectsLink(ctx, id, controllerResultID, controllerResultID); err != nil {
+		return fmt.Errorf("create link between controller and result: %w", err)
 	}
 
-	objectTypes := common.GetChildrenUUIDSByLinkType(ctx, objectUUID, "__type")
-	if len(objectTypes) == 0 {
-		return fmt.Errorf("target object miss type")
+	objectType, err := common.FindObjectType(ctx, objectUUID)
+	if err != nil {
+		return fmt.Errorf("find object type: %w", err)
 	}
 
-	objectType := objectTypes[0]
-
-	if err := common.CreateTypesLink(ctx, internalStatefun.CONTROLLER_TYPE, objectType, internalStatefun.CONTROLLER_SUBJECT_TYPE); err != nil {
-		return err
+	if err := common.CreateTypesLink(ctx, inStatefun.CONTROLLER_TYPE, objectType, inStatefun.CONTROLLER_SUBJECT_TYPE); err != nil {
+		return fmt.Errorf("create types link: %w", err)
 	}
 
-	if err := common.CreateObjectsLink(ctx, id, objectUUID); err != nil {
-		return err
+	if err := common.CreateObjectsLink(ctx, id, objectUUID, objectUUID); err != nil {
+		return fmt.Errorf("create types link: %w", err)
 	}
 
 	triggerPayload := easyjson.NewJSONObject()
-	triggerPayload.SetByPath("body.triggers.update", easyjson.JSONFromArray([]string{internalStatefun.CONTROLLER_TRIGGER}))
-	_, err := ctx.Request(sfplugins.AutoSelect, "functions.cmdb.api.type.update", objectType, &triggerPayload, nil)
+	triggerPayload.SetByPath("body.triggers.update", easyjson.JSONFromArray([]string{inStatefun.CONTROLLER_TRIGGER}))
+	_, err = ctx.Request(sfplugins.AutoRequestSelect, "functions.cmdb.api.type.update", objectType, &triggerPayload, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("create trigger: %w", err)
 	}
 
 	return nil

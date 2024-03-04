@@ -32,23 +32,41 @@ func RegisterFunctions(runtime *statefun.Runtime) {
 }
 
 func initSchema(runtime *statefun.Runtime) error {
-	if err := common.CreateType(runtime, inStatefun.CONTROLLER_TYPE, easyjson.NewJSONObject()); err != nil {
+	if err := common.CreateType(runtime,
+		common.SetHubPreffix(runtime.Domain, inStatefun.CONTROLLER_TYPE),
+		easyjson.NewJSONObject(),
+	); err != nil {
 		return err
 	}
 
-	if err := common.CreateType(runtime, inStatefun.CONTROLLER_RESULT_TYPE, easyjson.NewJSONObject()); err != nil {
+	if err := common.CreateType(runtime,
+		common.SetHubPreffix(runtime.Domain, inStatefun.CONTROLLER_RESULT_TYPE),
+		easyjson.NewJSONObject(),
+	); err != nil {
 		return err
 	}
 
-	if err := common.CreateTypesLink(runtime, runtime.Domain.CreateObjectIDWithHubDomain(inStatefun.SESSION_TYPE, false), inStatefun.CONTROLLER_TYPE, inStatefun.CONTROLLER_TYPE); err != nil {
+	if err := common.CreateTypesLink(runtime,
+		common.SetHubPreffix(runtime.Domain, inStatefun.SESSION_TYPE),
+		common.SetHubPreffix(runtime.Domain, inStatefun.CONTROLLER_TYPE),
+		inStatefun.CONTROLLER_TYPE,
+	); err != nil {
 		return err
 	}
 
-	if err := common.CreateTypesLink(runtime, inStatefun.CONTROLLER_TYPE, runtime.Domain.CreateObjectIDWithHubDomain(inStatefun.SESSION_TYPE, false), inStatefun.SUBSCRIBER_TYPE); err != nil {
+	if err := common.CreateTypesLink(runtime,
+		common.SetHubPreffix(runtime.Domain, inStatefun.CONTROLLER_TYPE),
+		common.SetHubPreffix(runtime.Domain, inStatefun.SESSION_TYPE),
+		inStatefun.SUBSCRIBER_TYPE,
+	); err != nil {
 		return err
 	}
 
-	if err := common.CreateTypesLink(runtime, inStatefun.CONTROLLER_TYPE, inStatefun.CONTROLLER_RESULT_TYPE, inStatefun.CONTROLLER_RESULT_TYPE); err != nil {
+	if err := common.CreateTypesLink(runtime,
+		common.SetHubPreffix(runtime.Domain, inStatefun.CONTROLLER_TYPE),
+		common.SetHubPreffix(runtime.Domain, inStatefun.CONTROLLER_RESULT_TYPE),
+		inStatefun.CONTROLLER_RESULT_TYPE,
+	); err != nil {
 		return err
 	}
 

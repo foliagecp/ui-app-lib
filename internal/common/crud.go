@@ -27,6 +27,11 @@ func CreateObject(c StatefunClient, objectID, originType string, body easyjson.J
 	}
 
 	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
+		details, _ := result.GetByPath("details").AsString()
+		if strings.Contains(details, "already exists") {
+			return nil
+		}
+
 		return fmt.Errorf("%v", result.GetByPath("details"))
 	}
 
@@ -45,6 +50,11 @@ func CreateType(c StatefunClient, name string, body easyjson.JSON) error {
 	}
 
 	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
+		details, _ := result.GetByPath("details").AsString()
+		if strings.Contains(details, "already exists") {
+			return nil
+		}
+
 		return fmt.Errorf("%v", result.GetByPath("details"))
 	}
 
@@ -81,6 +91,11 @@ func CreateObjectsLink(c StatefunClient, from, to, name string) error {
 	}
 
 	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
+		details, _ := result.GetByPath("details").AsString()
+		if strings.Contains(details, "already exists") {
+			return nil
+		}
+
 		return fmt.Errorf("%v", result.GetByPath("details"))
 	}
 

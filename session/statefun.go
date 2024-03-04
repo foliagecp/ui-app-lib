@@ -26,21 +26,30 @@ func RegisterFunctions(runtime *statefun.Runtime) {
 	statefun.NewFunctionType(runtime, inStatefun.PREPARE_EGRESS, prepareEgress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.EGRESS, egress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 
-	if runtime.Domain.Name() == runtime.Domain.HubDomainName() {
-		runtime.RegisterOnAfterStartFunction(initSchema, false)
-	}
+	runtime.RegisterOnAfterStartFunction(initSchema, false)
 }
 
 func initSchema(runtime *statefun.Runtime) error {
-	if err := common.CreateType(runtime, inStatefun.SESSION_TYPE, easyjson.NewJSONObject()); err != nil {
+	if err := common.CreateType(runtime,
+		common.SetHubPreffix(runtime.Domain, inStatefun.SESSION_TYPE),
+		easyjson.NewJSONObject(),
+	); err != nil {
 		return err
 	}
 
-	if err := common.CreateTypesLink(runtime, runtime.Domain.CreateObjectIDWithHubDomain(crud.BUILT_IN_TYPE_GROUP, false), inStatefun.SESSION_TYPE, inStatefun.SESSION_TYPE); err != nil {
+	if err := common.CreateTypesLink(runtime,
+		common.SetHubPreffix(runtime.Domain, crud.BUILT_IN_TYPE_GROUP),
+		common.SetHubPreffix(runtime.Domain, inStatefun.SESSION_TYPE),
+		inStatefun.SESSION_TYPE,
+	); err != nil {
 		return err
 	}
 
-	if err := common.CreateObject(runtime, inStatefun.SESSIONS_ENTYPOINT, runtime.Domain.CreateObjectIDWithHubDomain(crud.BUILT_IN_TYPE_GROUP, false), easyjson.NewJSONObject()); err != nil {
+	if err := common.CreateObject(runtime,
+		common.SetHubPreffix(runtime.Domain, inStatefun.SESSIONS_ENTYPOINT),
+		common.SetHubPreffix(runtime.Domain, crud.BUILT_IN_TYPE_GROUP),
+		easyjson.NewJSONObject(),
+	); err != nil {
 		return err
 	}
 
@@ -63,11 +72,11 @@ Payload:
 func ingress(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	id := ctxProcessor.Self.ID
 	payload := ctxProcessor.Payload
-	sessionID := generate.SessionID(id)
+	sessionID := ctxProcessor.Domain.CreateObjectIDWithHubDomain(generate.SessionID(id).String(), false)
 
 	payload.SetByPath("client_id", easyjson.NewJSON(id))
 
-	if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.SESSION_CONTROL, sessionID.String(), payload, nil); err != nil {
+	if err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.SESSION_CONTROL, sessionID, payload, nil); err != nil {
 		slog.Warn(err.Error())
 	}
 }

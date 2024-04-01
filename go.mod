@@ -13,7 +13,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/klauspost/compress v1.17.2 // indirect
-	github.com/lmittmann/tint v1.0.4 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/nats-io/nats.go v1.32.0 // indirect
 	github.com/nats-io/nkeys v0.4.7 // indirect

@@ -11,7 +11,7 @@ import (
 func ObjectType(c db.CMDBSyncClient, id string) (string, error) {
 	objectBody, err := c.ObjectRead(id)
 	if err != nil {
-		return "", fmt.Errorf("failed to find uuid type: %w", err.Error())
+		return "", fmt.Errorf("failed to find uuid type: %w", err)
 	}
 
 	objectType, ok := objectBody.GetByPath("type").AsString()

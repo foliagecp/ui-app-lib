@@ -1,14 +1,16 @@
 package adapter
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
 
 	"github.com/foliagecp/easyjson"
-	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
+	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/ui-app-lib/internal/common"
+	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 )
 
 // decorators
@@ -18,7 +20,7 @@ const (
 )
 
 type controllerDecorator interface {
-	Invoke(ctx *sfplugins.StatefunContextProcessor) easyjson.JSON
+	Decorate(ctx *sf.StatefunContextProcessor) easyjson.JSON
 }
 
 type controllerProperty struct {
@@ -26,7 +28,7 @@ type controllerProperty struct {
 	path string
 }
 
-func (c *controllerProperty) Invoke(ctx *sfplugins.StatefunContextProcessor) easyjson.JSON {
+func (c *controllerProperty) Decorate(ctx *sf.StatefunContextProcessor) easyjson.JSON {
 	return ctx.GetObjectContext().GetByPath(c.path)
 }
 
@@ -36,7 +38,7 @@ type controllerFunction struct {
 	args     []string
 }
 
-func (c *controllerFunction) Invoke(ctx *sfplugins.StatefunContextProcessor) easyjson.JSON {
+func (c *controllerFunction) Decorate(ctx *sf.StatefunContextProcessor) easyjson.JSON {
 	switch c.function {
 	case "getChildrenUUIDSByLinkType":
 		lt := ""
@@ -44,13 +46,13 @@ func (c *controllerFunction) Invoke(ctx *sfplugins.StatefunContextProcessor) eas
 			lt = c.args[0]
 		}
 
-		children := common.GetChildrenUUIDSByLinkType(ctx, c.id, lt)
+		children := getChildrenUUIDSByLinkType(ctx, c.id, lt)
 		return easyjson.JSONFromArray(children)
 	case "getInOutLinkTypes":
-		out := common.GetInOutLinkTypes(ctx, c.id)
+		out := getInOutLinkTypes(ctx, c.id)
 		return easyjson.JSONFromArray(out)
 	case "getOutLinkTypes":
-		out := common.GetOutLinkTypes(ctx, c.id)
+		out := getOutLinkTypes(ctx, c.id)
 		return easyjson.JSONFromArray(out)
 	case "getLinksByType":
 		if len(c.args) != 1 {
@@ -58,16 +60,15 @@ func (c *controllerFunction) Invoke(ctx *sfplugins.StatefunContextProcessor) eas
 		}
 
 		lt := c.args[0]
-		out := common.GetLinksByType(ctx, c.id, lt)
+		out := getLinksByType(ctx, c.id, lt)
 		return easyjson.NewJSON(out)
 	case "typesNavigation":
-		if len(c.args) != 2 {
+		if len(c.args) != 1 {
 			return easyjson.NewJSON("invalid arguments")
 		}
 
-		forward, _ := strconv.Atoi(c.args[0])
-		backward, _ := strconv.Atoi(c.args[1])
-		return common.TypesNavigation(ctx, c.id, forward, backward)
+		radius, _ := strconv.Atoi(c.args[0])
+		return typesNavigation(ctx, c.id, radius)
 	}
 
 	return easyjson.NewJSONObject()
@@ -123,4 +124,118 @@ func extractFunctionAndArgs(s string) (string, []string, error) {
 	funcArgs := strings.Split(strings.TrimSpace(split[1]), ",")
 
 	return funcName, funcArgs, nil
+}
+
+func getChildrenUUIDSByLinkType(ctx *sf.StatefunContextProcessor, id, filterLinkType string) []string {
+	payload := easyjson.NewJSONObject()
+	payload.SetByPath("link_type", easyjson.NewJSON(filterLinkType))
+
+	result, err := ctx.Request(sf.AutoRequestSelect, inStatefun.CHILDREN_LINK_TYPE_DECORATOR, id, &payload, nil)
+	if err != nil {
+		slog.Error(err.Error())
+		return []string{}
+	}
+
+	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
+		slog.Error(result.GetByPath("message").AsString())
+		return []string{}
+	}
+
+	var list []string
+	if err := json.Unmarshal(result.GetByPath("data").ToBytes(), &list); err != nil {
+		return []string{}
+	}
+
+	return list
+}
+
+func getInOutLinkTypes(ctx *sf.StatefunContextProcessor, id string) []string {
+	payload := easyjson.NewJSONObject()
+
+	result, err := ctx.Request(sf.AutoRequestSelect, inStatefun.IO_LINK_TYPES_DECORATOR, id, &payload, nil)
+	if err != nil {
+		return []string{}
+	}
+
+	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
+		return []string{}
+	}
+
+	in, _ := result.GetByPath("data.in").AsArrayString()
+	out, _ := result.GetByPath("data.out").AsArrayString()
+
+	return append(in, out...)
+}
+
+func getOutLinkTypes(ctx *sf.StatefunContextProcessor, id string) []string {
+	payload := easyjson.NewJSONObject()
+
+	result, err := ctx.Request(sf.AutoRequestSelect, inStatefun.IO_LINK_TYPES_DECORATOR, id, &payload, nil)
+	if err != nil {
+		return []string{}
+	}
+
+	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
+		return []string{}
+	}
+
+	out, _ := result.GetByPath("data.out").AsArrayString()
+
+	return out
+}
+
+type Link struct {
+	Source string   `json:"source"`
+	Target string   `json:"target"`
+	Type   string   `json:"type,omitempty"`
+	Tags   []string `json:"tags,omitempty"`
+}
+
+func getLinksByType(ctx *sf.StatefunContextProcessor, id, filterLinkType string) []Link {
+	payload := easyjson.NewJSONObject()
+	payload.SetByPath("link_type", easyjson.NewJSON(filterLinkType))
+
+	result, err := ctx.Request(sf.AutoRequestSelect, inStatefun.LINKS_TYPE_DECORATOR, id, &payload, nil)
+	if err != nil {
+		return []Link{}
+	}
+
+	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
+		return []Link{}
+	}
+
+	var links []Link
+
+	if err := json.Unmarshal(result.GetByPath("data").ToBytes(), &links); err != nil {
+		return []Link{}
+	}
+
+	return links
+}
+
+func typesNavigation(ctx *sf.StatefunContextProcessor, id string, radius int) easyjson.JSON {
+	payload := easyjson.NewJSONObject()
+	payload.SetByPath("radius", easyjson.NewJSON(radius))
+
+	c := common.MustCMDBClient(ctx.Request)
+	objectBody, err := c.ObjectRead(id)
+	if err != nil {
+		return easyjson.JSON{}
+	}
+
+	objectType, ok := objectBody.GetByPath("type").AsString()
+	if !ok {
+		return easyjson.JSON{}
+	}
+
+	result, err := ctx.Request(sf.AutoRequestSelect, inStatefun.TYPES_NAVIGATION_DECORATOR, objectType, &payload, nil)
+	if err != nil {
+		return easyjson.JSON{}
+	}
+
+	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
+		return easyjson.JSON{}
+	}
+
+	return result.GetByPath("data")
 }

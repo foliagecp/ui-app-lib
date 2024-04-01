@@ -4,7 +4,7 @@ go 1.21.0
 
 require (
 	github.com/foliagecp/easyjson v0.1.0
-	github.com/foliagecp/sdk v0.1.3-0.20240301135444-966f4df48e3b
+	github.com/foliagecp/sdk v0.1.3-0.20240326182429-acd205175df9
 	github.com/google/uuid v1.4.0
 )
 
@@ -13,6 +13,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/klauspost/compress v1.17.2 // indirect
+	github.com/lmittmann/tint v1.0.4 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/nats-io/nats.go v1.32.0 // indirect
 	github.com/nats-io/nkeys v0.4.7 // indirect

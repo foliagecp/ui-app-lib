@@ -1,20 +1,42 @@
 package common
 
 import (
-	"github.com/foliagecp/easyjson"
-	sf "github.com/foliagecp/sdk/statefun/plugins"
+	"fmt"
+
+	"github.com/foliagecp/sdk/clients/go/db"
+	"github.com/foliagecp/sdk/embedded/graph/crud"
+	"github.com/foliagecp/sdk/statefun/plugins"
 )
 
-type StatefunContext struct {
-	*sf.StatefunContextProcessor
-}
-
-func NewStatefunContext(ctx *sf.StatefunContextProcessor) *StatefunContext {
-	return &StatefunContext{
-		StatefunContextProcessor: ctx,
+func MustCMDBClient(request plugins.SFRequestFunc) db.CMDBSyncClient {
+	c, err := db.NewCMDBSyncClientFromRequestFunction(request)
+	if err != nil {
+		panic(err)
 	}
+	return c
 }
 
-func (c *StatefunContext) Request(requestProvider sf.RequestProvider, typename, id string, payload, options *easyjson.JSON) (*easyjson.JSON, error) {
-	return c.StatefunContextProcessor.Request(requestProvider, typename, id, payload, options)
+func OutTargetLink(source, linkname string) string {
+	return fmt.Sprintf(crud.OutLinkTargetKeyPrefPattern+crud.LinkKeySuff1Pattern, source, linkname)
+}
+
+func OutLinkType(source, ltype string, target ...string) string {
+	if len(target) > 0 {
+		return fmt.Sprintf(crud.OutLinkTypeKeyPrefPattern+crud.LinkKeySuff2Pattern, source, ltype, target[0])
+	}
+	return fmt.Sprintf(crud.OutLinkTypeKeyPrefPattern+crud.LinkKeySuff1Pattern, source, ltype)
+}
+
+func InLinkKeyPattern(id, target string, linkType ...string) string {
+	if len(linkType) > 0 {
+		lt := linkType[0]
+
+		return fmt.Sprintf(crud.InLinkKeyPrefPattern+crud.LinkKeySuff2Pattern,
+			id, target, lt,
+		)
+	}
+
+	return fmt.Sprintf(crud.InLinkKeyPrefPattern+crud.LinkKeySuff1Pattern,
+		id, target,
+	)
 }

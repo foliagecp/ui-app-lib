@@ -1,30 +1,25 @@
 package common
 
 import (
-	"errors"
+	"fmt"
 
 	"github.com/foliagecp/easyjson"
+	"github.com/foliagecp/sdk/clients/go/db"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 )
 
-func ReplyOk(ctx *sf.StatefunContextProcessor) {
-	Reply(ctx, "ok", easyjson.NewJSONObject())
-}
-
-func ReplyError(ctx *sf.StatefunContextProcessor, err error) {
-	Reply(ctx, "failed", easyjson.NewJSON(err.Error()))
-}
-
-func CheckRequestError(result *easyjson.JSON, err error) error {
+func ObjectType(c db.CMDBSyncClient, id string) (string, error) {
+	objectBody, err := c.ObjectRead(id)
 	if err != nil {
-		return err
+		return "", fmt.Errorf("failed to find uuid type: %w", err.Error())
 	}
 
-	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
-		return errors.New(result.GetByPath("result").AsStringDefault("unknown error"))
+	objectType, ok := objectBody.GetByPath("type").AsString()
+	if !ok {
+		return "", fmt.Errorf("object's type not defined")
 	}
 
-	return nil
+	return objectType, nil
 }
 
 func Reply(ctx *sf.StatefunContextProcessor, status string, data easyjson.JSON) {

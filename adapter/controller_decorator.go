@@ -9,7 +9,6 @@ import (
 
 	"github.com/foliagecp/easyjson"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
-	"github.com/foliagecp/ui-app-lib/internal/common"
 	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 )
 
@@ -217,18 +216,7 @@ func typesNavigation(ctx *sf.StatefunContextProcessor, id string, radius int) ea
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("radius", easyjson.NewJSON(radius))
 
-	c := common.MustCMDBClient(ctx.Request)
-	objectBody, err := c.ObjectRead(id)
-	if err != nil {
-		return easyjson.JSON{}
-	}
-
-	objectType, ok := objectBody.GetByPath("type").AsString()
-	if !ok {
-		return easyjson.JSON{}
-	}
-
-	result, err := ctx.Request(sf.AutoRequestSelect, inStatefun.TYPES_NAVIGATION_DECORATOR, objectType, &payload, nil)
+	result, err := ctx.Request(sf.AutoRequestSelect, inStatefun.TYPES_NAVIGATION_DECORATOR, id, &payload, nil)
 	if err != nil {
 		return easyjson.JSON{}
 	}

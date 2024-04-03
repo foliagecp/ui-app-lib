@@ -1,6 +1,7 @@
 package decorators
 
 import (
+	"encoding/json"
 	"log/slog"
 	"strings"
 
@@ -52,8 +53,37 @@ type routeObject struct {
 	}
 */
 func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
-	current := ctx.Self.ID
+	currentObjectID := ctx.Self.ID
 	cmdb := common.MustCMDBClient(ctx.Request)
+
+	objectBody, err := cmdb.ObjectRead(currentObjectID)
+	if err != nil {
+		errResponse(ctx, "failed to read object")
+		return
+	}
+
+	objectType, ok := objectBody.GetByPath("type").AsString()
+	if !ok {
+		errResponse(ctx, "missing object type")
+		return
+	}
+
+	objectsOutLinks := make(map[string]string)
+
+	for _, key := range ctx.Domain.Cache().GetKeysByPattern(common.OutLinkType(ctx.Self.ID, ">")) {
+		split := strings.Split(key, ".")
+		if len(split) == 0 {
+			continue
+		}
+
+		linkname, err := ctx.Domain.Cache().GetValue(key)
+		if err != nil {
+			continue
+		}
+
+		lastkey := split[len(split)-1]
+		objectsOutLinks[lastkey] = string(linkname)
+	}
 
 	radius := int(ctx.Payload.GetByPath("radius").AsNumericDefault(1))
 
@@ -66,11 +96,11 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	nodes := make([]routeNode, 0)
 
 	stack := []routeNode{
-		{ID: current, Depth: 0},
+		{ID: objectType, Depth: 0},
 	}
 
 	visited := make(map[string]struct{})
-	visited[current] = struct{}{}
+	visited[objectType] = struct{}{}
 
 	for len(stack) > 0 {
 		current := stack[0]
@@ -90,12 +120,37 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		alias := typeBody.GetByPath("body.alias").AsStringDefault("")
 		pos, _ := typeBody.GetByPath("body.pos").AsArray()
 
-		nodes = append(nodes, routeNode{
+		node := routeNode{
 			ID:    current.ID,
 			Name:  alias,
 			Depth: current.Depth,
 			Pos:   pos,
-		})
+		}
+
+		if current.Depth == 1 && current.ID != objectType {
+
+			if ok := typeBody.PathExists("object_ids"); ok {
+				var typeObjects []string
+				if err := json.Unmarshal(typeBody.GetByPath("object_ids").ToBytes(), &typeObjects); err != nil {
+					slog.Warn(err.Error())
+				}
+
+				for _, v := range typeObjects {
+					linkname, ok := objectsOutLinks[v]
+					if !ok {
+						continue
+					}
+
+					node.Objects = append(node.Objects, routeObject{
+						ID:   v,
+						Name: linkname,
+					})
+				}
+			}
+
+		}
+
+		nodes = append(nodes, node)
 
 		if current.Depth >= maxRadius {
 			continue
@@ -103,14 +158,8 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 		outTypes, _ := typeBody.GetByPath("to_types").AsArrayString()
 
-		for _, v := range inOutTypes(ctx, current.ID) {
-			if _, ok := visited[v]; ok {
-				continue
-			}
-
-			visited[v] = struct{}{}
-
-			tbody, err := cmdb.TypeRead(v)
+		for _, ioType := range inOutTypes(ctx, current.ID) {
+			tbody, err := cmdb.TypeRead(ioType)
 			if err != nil {
 				continue
 			}
@@ -122,7 +171,7 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 			isOut := false
 			for _, outType := range outTypes {
-				if outType == v {
+				if outType == ioType {
 					isOut = true
 					break
 				}
@@ -133,20 +182,29 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			if isOut {
 				l = link{
 					Source: current.ID,
-					Target: v,
+					Target: ioType,
 				}
 			} else {
 				l = link{
-					Source: v,
+					Source: ioType,
 					Target: current.ID,
 				}
 			}
 
-			links = append(links, l)
-			stack = append(stack, routeNode{
-				ID:    v,
-				Depth: current.Depth + 1,
-			})
+			if _, ok := visited[l.Source+l.Target]; !ok {
+				links = append(links, l)
+			}
+
+			visited[l.Source+l.Target] = struct{}{}
+
+			if _, ok := visited[ioType]; !ok {
+				stack = append(stack, routeNode{
+					ID:    ioType,
+					Depth: current.Depth + 1,
+				})
+			}
+
+			visited[ioType] = struct{}{}
 		}
 	}
 

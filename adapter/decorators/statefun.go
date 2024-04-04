@@ -24,6 +24,10 @@ func errResponse(ctx *sf.StatefunContextProcessor, msg string) {
 func okResponse(ctx *sf.StatefunContextProcessor, data any) {
 	resp := easyjson.NewJSONObject()
 	resp.SetByPath("status", easyjson.NewJSON("ok"))
-	resp.SetByPath("data", easyjson.NewJSON(data))
+	if _, ok := data.(easyjson.JSON); ok {
+		resp.SetByPath("data", data)
+	} else {
+		resp.SetByPath("data", easyjson.NewJSON(data))
+	}
 	ctx.Reply.With(resp.GetPtr())
 }

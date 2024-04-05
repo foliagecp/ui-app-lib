@@ -64,12 +64,15 @@ func linksByType(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 		objectID := split[len(split)-2]
 
-		linkType, err := common.ObjectType(c, objectID)
+		linkBody, err := c.ObjectsLinkRead(objectID, ctx.Self.ID)
 		if err != nil {
 			continue
 		}
 
-		linkType = ctx.Domain.GetObjectIDWithoutDomain(linkType)
+		linkType, ok := linkBody.GetByPath("type").AsString()
+		if !ok {
+			continue
+		}
 
 		if linkType != filterLinkType {
 			continue

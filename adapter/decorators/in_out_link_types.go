@@ -22,6 +22,7 @@ Request: {}
 */
 func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	c := common.MustCMDBClient(ctx.Request)
+	visited := make(map[string]struct{})
 
 	in := make([]string, 0)
 	inPattern := common.InLinkKeyPattern(ctx.Self.ID, ">")
@@ -34,12 +35,22 @@ func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 		objectID := split[len(split)-2]
 
-		linkType, err := common.ObjectType(c, objectID)
+		linkBody, err := c.ObjectsLinkRead(objectID, ctx.Self.ID)
 		if err != nil {
 			continue
 		}
 
-		linkType = ctx.Domain.GetObjectIDWithoutDomain(linkType)
+		linkType, ok := linkBody.GetByPath("type").AsString()
+		if !ok {
+			continue
+		}
+
+		if _, ok := visited[linkType]; ok {
+			continue
+		}
+
+		visited[linkType] = struct{}{}
+
 		in = append(in, linkType)
 	}
 
@@ -53,6 +64,13 @@ func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		}
 
 		linkType := split[len(split)-2]
+
+		if _, ok := visited[linkType]; ok {
+			continue
+		}
+
+		visited[linkType] = struct{}{}
+
 		out = append(out, linkType)
 	}
 

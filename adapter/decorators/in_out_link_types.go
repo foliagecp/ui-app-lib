@@ -45,6 +45,10 @@ func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			continue
 		}
 
+		if !filterLinkType(linkType) {
+			continue
+		}
+
 		if _, ok := visited[linkType]; ok {
 			continue
 		}
@@ -65,6 +69,10 @@ func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 		linkType := split[len(split)-2]
 
+		if !filterLinkType(linkType) {
+			continue
+		}
+
 		if _, ok := visited[linkType]; ok {
 			continue
 		}
@@ -78,4 +86,15 @@ func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	resp.SetByPath("in", easyjson.JSONFromArray(in))
 	resp.SetByPath("out", easyjson.JSONFromArray(out))
 	okResponse(ctx, resp)
+}
+
+func filterLinkType(lt string) bool {
+	// it means that certain link type related with internal
+	if strings.HasPrefix(lt, "__") {
+		return false
+	}
+
+	// TODO: add more filters for crud link type
+
+	return true
 }

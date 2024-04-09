@@ -21,19 +21,19 @@ const (
 )
 
 func RegisterFunctions(runtime *statefun.Runtime) {
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_START, startController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CLEAR, clearController, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_UPDATE, updateControllerObject, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_TRIGGER, controllerObjectTrigger, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CONSTRUCT, controllerConstruct, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetAllowedRequestProviders(sfplugins.AutoRequestSelect))
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_UPDATE, updateController, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_START, StartController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CLEAR, ClearController, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_UPDATE, UpdateControllerObject, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_TRIGGER, ControllerObjectTrigger, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CONSTRUCT, ControllerConstruct, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetAllowedRequestProviders(sfplugins.AutoRequestSelect))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_UPDATE, UpdateController, *statefun.NewFunctionTypeConfig())
 
 	decorators.Register(runtime)
 
-	runtime.RegisterOnAfterStartFunction(initSchema, false)
+	runtime.RegisterOnAfterStartFunction(InitSchema, false)
 }
 
-func initSchema(runtime *statefun.Runtime) error {
+func InitSchema(runtime *statefun.Runtime) error {
 	cmdb, err := db.NewCMDBSyncClientFromRequestFunction(runtime.Request)
 	if err != nil {
 		return err
@@ -95,7 +95,7 @@ func initSchema(runtime *statefun.Runtime) error {
 		declaration: {...},
 	},
 */
-func startController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
+func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
 	self := ctx.Self
 	caller := ctx.Caller
 	payload := ctx.Payload
@@ -111,11 +111,17 @@ func startController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 	}
 
 	if err := cmdb.ObjectsLinkCreate(self.ID, caller.ID, caller.ID, []string{}); err != nil {
-		slog.Warn("failed to create objects link between controller and session", "err", err.Error())
+		if !common.ErrorAlreadyExists(err) {
+			slog.Warn("failed to create objects link between controller and session", "err", err.Error())
+			return
+		}
 	}
 
 	if err := cmdb.ObjectsLinkCreate(caller.ID, self.ID, self.ID, []string{}); err != nil {
-		slog.Warn("failed to create objects link between session and controller", "err", err.Error())
+		if !common.ErrorAlreadyExists(err) {
+			slog.Warn("failed to create objects link between session and controller", "err", err.Error())
+			return
+		}
 	}
 
 	uuids, _ := payload.GetByPath("uuids").AsArrayString()
@@ -126,25 +132,39 @@ func startController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 		controllerObjectBody.SetByPath("parent", easyjson.NewJSON(self.ID))
 
 		if err := cmdb.ObjectCreate(controllerObjectID, inStatefun.CONTROLLER_OBJECT_TYPE, controllerObjectBody); err != nil {
-			slog.Warn("failed to create controller object", "err", err.Error())
+			if !common.ErrorAlreadyExists(err) {
+				slog.Warn("failed to create controller object", "err", err.Error())
+				continue
+			}
 		}
 
 		objectType, err := common.ObjectType(cmdb, objectUUID)
 		if err != nil {
-			slog.Warn("failed to find uuid type", "err", err.Error())
-			continue
+			if !common.ErrorAlreadyExists(err) {
+				slog.Warn("failed to find uuid type", "err", err.Error())
+				continue
+			}
 		}
 
 		if err := cmdb.TypesLinkCreate(inStatefun.CONTROLLER_OBJECT_TYPE, objectType, inStatefun.CONTROLLER_SUBJECT_TYPE, []string{}); err != nil {
-			slog.Warn("failed to create types link between controller object and uuid", "err", err.Error())
+			if !common.ErrorAlreadyExists(err) {
+				slog.Warn("failed to create types link between controller object and uuid", "err", err.Error())
+				continue
+			}
 		}
 
 		if err := cmdb.ObjectsLinkCreate(controllerObjectID, objectUUID, objectUUID, []string{}); err != nil {
-			slog.Warn("failed to create objects link between controller object and uuid", "err", err.Error())
+			if !common.ErrorAlreadyExists(err) {
+				slog.Warn("failed to create objects link between controller object and uuid", "err", err.Error())
+				continue
+			}
 		}
 
 		if err := cmdb.ObjectsLinkCreate(self.ID, controllerObjectID, controllerObjectID, []string{}); err != nil {
-			slog.Warn("failed to create objects link between controller and controller object", "err", err.Error())
+			if !common.ErrorAlreadyExists(err) {
+				slog.Warn("failed to create objects link between controller and controller object", "err", err.Error())
+				continue
+			}
 		}
 
 		cmdb.TriggerObjectSet(objectType, db.UpdateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
@@ -158,7 +178,7 @@ func startController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 // send to construct
 // compare result
 // if it's different send update to controller
-func updateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
+func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
 	controllerObjectID := ctx.Self.ID
 	slog.Info("Update controller object", "id", controllerObjectID)
 
@@ -198,7 +218,7 @@ func updateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.CONTROLLER_UPDATE, parentControllerID, &update, nil)
 }
 
-func controllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
+func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	objectUUID := ctxProcessor.Self.ID
 	pattern := common.InLinkKeyPattern(objectUUID, ">")
 
@@ -219,7 +239,7 @@ func controllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 	}
 }
 
-func updateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
+func UpdateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
 	self := ctx.Self
 	body := ctx.GetObjectContext()
 	controllerName, _ := body.GetByPath("name").AsString()
@@ -249,9 +269,8 @@ func updateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunConte
 @function:<function.name.id>:[[arg1 value],[arg2 value],...[argN value]] - ideal
 
 @function:getChildren(linkType) - now
-`
 */
-func controllerConstruct(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
+func ControllerConstruct(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
 	id := ctx.Self.ID
 	payload := ctx.Payload
 
@@ -266,6 +285,6 @@ func controllerConstruct(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunCo
 	common.Reply(ctx, "ok", construct)
 }
 
-func clearController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
+func ClearController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
 	return
 }

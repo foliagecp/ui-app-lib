@@ -10,7 +10,7 @@ import (
 	"github.com/foliagecp/ui-app-lib/internal/common"
 )
 
-type typesRouteView struct {
+type typesNav struct {
 	Nodes []routeNode `json:"nodes"`
 	Links []link      `json:"links"`
 }
@@ -81,8 +81,20 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			continue
 		}
 
-		lastkey := split[len(split)-1]
-		objectsOutLinks[lastkey] = string(linkname)
+		object := split[len(split)-1]
+		objectsOutLinks[object] = string(linkname)
+	}
+
+	for _, key := range ctx.Domain.Cache().GetKeysByPattern(common.InLinkKeyPattern(ctx.Self.ID, ">")) {
+		split := strings.Split(key, ".")
+		if len(split) == 0 {
+			continue
+		}
+
+		objectID := split[len(split)-2]
+		linkname := split[len(split)-1]
+
+		objectsOutLinks[objectID] = linkname
 	}
 
 	radius := int(ctx.Payload.GetByPath("radius").AsNumericDefault(1))
@@ -147,7 +159,6 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 					})
 				}
 			}
-
 		}
 
 		nodes = append(nodes, node)
@@ -208,7 +219,7 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		}
 	}
 
-	nav := &typesRouteView{
+	nav := &typesNav{
 		Links: links,
 		Nodes: nodes,
 	}

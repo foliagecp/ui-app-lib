@@ -118,6 +118,8 @@ var routes = map[Command]string{
 
 func sessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
+	logger := slog.With("session_id", sessionID)
+
 	payload := ctx.Payload
 
 	in := IngressPayload{}
@@ -128,7 +130,7 @@ func sessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	args := strings.Split(in.Command, " ")
 
 	if len(args) == 0 && len(in.Controllers) == 0 {
-		slog.Info("invalid args")
+		logger.Warn("Invalid router args")
 		return
 	}
 
@@ -142,10 +144,11 @@ func sessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 	next, ok := routes[command]
 	if !ok {
+		logger.Warn("Command not found", "command", command)
 		return
 	}
 
-	slog.Info("Go to next route", "next", next, "session", sessionID)
+	logger.Info("Forward to next route", "next", next)
 
 	ctx.Signal(sf.JetstreamGlobalSignal, next, sessionID, payload, nil)
 }
@@ -161,7 +164,7 @@ func startSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	now := time.Now().UnixNano()
 
 	body := easyjson.NewJSONObject()
-	body.SetByPath("life_time", easyjson.NewJSON(SessionLifeTime))
+	body.SetByPath("life_time", easyjson.NewJSON(SessionLifeTime.String()))
 	body.SetByPath("inactivity_timeout", easyjson.NewJSON(SessionInactivityTimeout.String()))
 	body.SetByPath("creation_time", easyjson.NewJSON(now))
 	body.SetByPath("last_activity_time", easyjson.NewJSON(now))

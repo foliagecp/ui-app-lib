@@ -83,12 +83,12 @@ func (s *typesNavigationTestSuite) Test() {
 		},
 		Links: []link{
 			{
-				Source: "hub/rack",
-				Target: "hub/node",
-			},
-			{
 				Source: "hub/node",
 				Target: "hub/disk",
+			},
+			{
+				Source: "hub/rack",
+				Target: "hub/node",
 			},
 		},
 	}

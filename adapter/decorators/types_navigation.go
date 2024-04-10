@@ -3,6 +3,7 @@ package decorators
 import (
 	"encoding/json"
 	"log/slog"
+	"sort"
 	"strings"
 
 	"github.com/foliagecp/sdk/embedded/graph/crud"
@@ -158,6 +159,10 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 						Name: linkname,
 					})
 				}
+
+				sort.Slice(node.Objects, func(i, j int) bool {
+					return node.Objects[i].ID < node.Objects[j].ID
+				})
 			}
 		}
 
@@ -218,6 +223,14 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			visited[ioType] = struct{}{}
 		}
 	}
+
+	sort.Slice(links, func(i, j int) bool {
+		return links[i].Source < links[j].Source
+	})
+
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].Depth < nodes[j].Depth
+	})
 
 	nav := &typesNav{
 		Links: links,

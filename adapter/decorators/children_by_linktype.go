@@ -47,6 +47,7 @@ func childrenUUIDsByLinkType(_ sf.StatefunExecutor, ctx *sf.StatefunContextProce
 	sort.Strings(result)
 
 	fmt.Printf("!!!!!!!!!! decorator childrenUUIDsByLinkType result: %v\n", result)
+	fmt.Println()
 
 	okResponse(ctx, result)
 }

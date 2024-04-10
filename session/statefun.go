@@ -88,7 +88,8 @@ func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	payload := ctx.Payload
 	sessionID := ctx.Domain.CreateObjectIDWithHubDomain(generate.SessionID(id).String(), false)
 
-	slog.Info("Receive msg", "from", id, "session_id", sessionID)
+	slog.Info("!!!!!!!!!! Receive msg", "from", id, "session_id", sessionID, "payload", payload.ToString())
+	fmt.Println()
 
 	payload.SetByPath("client_id", easyjson.NewJSON(id))
 
@@ -305,6 +306,7 @@ func PreEgress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	}
 
 	fmt.Println("!!!!!!!!!! pre egress", ctx.Payload.ToString())
+	fmt.Println()
 
 	if err := ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.EGRESS, clientID, ctx.Payload, nil); err != nil {
 		slog.Warn(err.Error())

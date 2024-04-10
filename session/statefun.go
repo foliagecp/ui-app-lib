@@ -24,19 +24,19 @@ const (
 )
 
 func RegisterFunctions(runtime *statefun.Runtime) {
-	statefun.NewFunctionType(runtime, inStatefun.INGRESS, ingress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_ROUTER, sessionRouter, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_START, startSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLOSE, closeSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_START_CONTROLLER, startController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLEAR_CONTROLLER, clearController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.PREPARE_EGRESS, preEgress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.EGRESS, egress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.INGRESS, Ingress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_ROUTER, SessionRouter, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_START, StartSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLOSE, CloseSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_START_CONTROLLER, StartController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLEAR_CONTROLLER, ClearController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.PREPARE_EGRESS, PreEgress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.EGRESS, Egress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 
-	runtime.RegisterOnAfterStartFunction(initSchema, false)
+	runtime.RegisterOnAfterStartFunction(InitSchema, false)
 }
 
-func initSchema(runtime *statefun.Runtime) error {
+func InitSchema(runtime *statefun.Runtime) error {
 	c, err := db.NewCMDBSyncClientFromRequestFunction(runtime.Request)
 	if err != nil {
 		return err
@@ -82,7 +82,7 @@ Payload:
 		}
 	}
 */
-func ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	id := ctx.Self.ID
 	payload := ctx.Payload
 	sessionID := ctx.Domain.CreateObjectIDWithHubDomain(generate.SessionID(id).String(), false)
@@ -116,7 +116,7 @@ var routes = map[Command]string{
 	CLEAR_CONTROLLER: inStatefun.SESSION_CLEAR_CONTROLLER,
 }
 
-func sessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+func SessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
 	logger := slog.With("session_id", sessionID)
 
@@ -153,7 +153,7 @@ func sessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	ctx.Signal(sf.JetstreamGlobalSignal, next, sessionID, payload, nil)
 }
 
-func startSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	params := ctx.GetObjectContext()
 	if params.IsNonEmptyObject() {
 		return
@@ -197,7 +197,7 @@ func startSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	)
 }
 
-func closeSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
 
 	slog.Error(errors.ErrUnsupported.Error())
@@ -214,7 +214,7 @@ func closeSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	)
 }
 
-func startController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
 
 	var controllers map[string]Controller
@@ -245,7 +245,8 @@ func startController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 		err := ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.CONTROLLER_START, controllerIDWithDomain, &payload, nil)
 		if err != nil {
-			continue
+			slog.Error(err.Error())
+			return
 		}
 	}
 
@@ -264,7 +265,7 @@ func startController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 // find all controller objects
 // delete links
 // clear declaration
-func clearController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+func ClearController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
 
 	slog.Error(errors.ErrUnsupported.Error())
@@ -281,7 +282,7 @@ func clearController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	)
 }
 
-func preEgress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+func PreEgress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	session := ctx.GetObjectContext()
 	clientID := session.GetByPath("client_id").AsStringDefault("")
 
@@ -295,7 +296,7 @@ func preEgress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	}
 }
 
-func egress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+func Egress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	if err := ctx.Egress(sf.NatsCoreEgress, ctx.Payload); err != nil {
 		slog.Warn(err.Error())
 	}

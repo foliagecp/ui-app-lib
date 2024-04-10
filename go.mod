@@ -6,6 +6,7 @@ require (
 	github.com/foliagecp/easyjson v0.1.0
 	github.com/foliagecp/sdk v0.1.3-0.20240409031935-8d1eef86e1a8
 	github.com/google/uuid v1.4.0
+	github.com/nats-io/nats.go v1.33.1
 	github.com/stretchr/testify v1.7.0
 )
 
@@ -19,7 +20,6 @@ require (
 	github.com/minio/highwayhash v1.0.2 // indirect
 	github.com/nats-io/jwt/v2 v2.5.5 // indirect
 	github.com/nats-io/nats-server/v2 v2.10.12 // indirect
-	github.com/nats-io/nats.go v1.33.1 // indirect
 	github.com/nats-io/nkeys v0.4.7 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect

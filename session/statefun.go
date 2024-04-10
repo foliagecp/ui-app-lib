@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -154,13 +155,25 @@ func SessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 }
 
 func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+	sessionID := ctx.Self.ID
+	payload := ctx.Payload
 	params := ctx.GetObjectContext()
+
 	if params.IsNonEmptyObject() {
+		response := easyjson.NewJSONObject()
+		response.SetByPath("command", easyjson.NewJSON(START_SESSION))
+		response.SetByPath("status", easyjson.NewJSON("ok"))
+		response.SetByPath("message", easyjson.NewJSON("already started"))
+
+		ctx.Signal(sf.JetstreamGlobalSignal,
+			inStatefun.PREPARE_EGRESS,
+			sessionID,
+			easyjson.NewJSONObjectWithKeyValue("payload", response).GetPtr(),
+			nil,
+		)
 		return
 	}
 
-	sessionID := ctx.Self.ID
-	payload := ctx.Payload
 	now := time.Now().UnixNano()
 
 	body := easyjson.NewJSONObject()
@@ -290,6 +303,8 @@ func PreEgress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		slog.Warn("empty client id")
 		return
 	}
+
+	fmt.Println("!!!!!!!!!! pre egress", ctx.Payload.ToString())
 
 	if err := ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.EGRESS, clientID, ctx.Payload, nil); err != nil {
 		slog.Warn(err.Error())

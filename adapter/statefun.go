@@ -256,6 +256,9 @@ func UpdateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunConte
 	subscribers := getChildrenUUIDSByLinkType(ctx, self.ID, inStatefun.SUBSCRIBER_TYPE)
 
 	slog.Info("Send update to subscribers", "subscribers", subscribers)
+
+	fmt.Println("!!!!!!!!!!!!!!! Send update to subscribers", updateReply.ToString())
+
 	for _, subID := range subscribers {
 		if err := ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.PREPARE_EGRESS, subID, &updateReply, nil); err != nil {
 			slog.Warn(err.Error())

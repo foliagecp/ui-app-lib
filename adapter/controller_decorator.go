@@ -130,6 +130,7 @@ func getChildrenUUIDSByLinkType(ctx *sf.StatefunContextProcessor, id, filterLink
 	payload.SetByPath("link_type", easyjson.NewJSON(filterLinkType))
 
 	fmt.Println("!!!!!!!!!!!! getChildrenUUIDSByLinkType: make request")
+	fmt.Println()
 
 	result, err := ctx.Request(sf.AutoRequestSelect, inStatefun.CHILDREN_LINK_TYPE_DECORATOR, id, &payload, nil)
 	if err != nil {
@@ -138,6 +139,7 @@ func getChildrenUUIDSByLinkType(ctx *sf.StatefunContextProcessor, id, filterLink
 	}
 
 	fmt.Println("!!!!!!!!!!!! getChildrenUUIDSByLinkType: result", result.ToString())
+	fmt.Println()
 
 	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
 		slog.Error(result.GetByPath("message").AsString())

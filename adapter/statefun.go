@@ -258,6 +258,7 @@ func UpdateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunConte
 	slog.Info("Send update to subscribers", "subscribers", subscribers)
 
 	fmt.Println("!!!!!!!!!!!!!!! Send update to subscribers", updateReply.ToString())
+	fmt.Println()
 
 	for _, subID := range subscribers {
 		if err := ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.PREPARE_EGRESS, subID, &updateReply, nil); err != nil {

@@ -279,6 +279,8 @@ func ControllerConstruct(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunCo
 	payload := ctx.Payload
 
 	decorators := parseDecorators(id, payload)
+	fmt.Printf("!!!!!!!!!! %s decorators: %v\n", id, decorators)
+
 	construct := easyjson.NewJSONObject()
 
 	for key, d := range decorators {

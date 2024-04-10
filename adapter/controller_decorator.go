@@ -79,6 +79,9 @@ func parseDecorators(objectID string, payload *easyjson.JSON) map[string]control
 	for _, key := range payload.ObjectKeys() {
 		body := payload.GetByPath(key).AsStringDefault("")
 		tokens := strings.Split(body, ":")
+
+		fmt.Printf("!!!!!!!!! %s key: %s parseDecorators tokens: %v\n", objectID, key, tokens)
+
 		if len(tokens) < 2 {
 			continue
 		}
@@ -99,6 +102,8 @@ func parseDecorators(objectID string, payload *easyjson.JSON) map[string]control
 				slog.Warn(err.Error())
 				continue
 			}
+
+			fmt.Printf("!!!!!!!!! %s extractFunctionAndArgs: f:%s args:%v\n", objectID, f, args)
 
 			decorators[key] = &controllerFunction{
 				id:       objectID,

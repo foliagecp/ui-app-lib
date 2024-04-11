@@ -3,9 +3,7 @@ package session
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/foliagecp/easyjson"
@@ -88,8 +86,7 @@ func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	payload := ctx.Payload
 	sessionID := ctx.Domain.CreateObjectIDWithHubDomain(generate.SessionID(id).String(), false)
 
-	slog.Info("!!!!!!!!!! Receive msg", "from", id, "session_id", sessionID, "payload", payload.ToString())
-	fmt.Println()
+	slog.Info("Receive msg", "from", id, "session_id", sessionID)
 
 	payload.SetByPath("client_id", easyjson.NewJSON(id))
 
@@ -120,28 +117,15 @@ var routes = map[Command]string{
 
 func SessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
-	logger := slog.With("session_id", sessionID)
-
 	payload := ctx.Payload
-
-	in := IngressPayload{}
-	if err := json.Unmarshal(payload.ToBytes(), &in); err != nil {
-		return
-	}
-
-	args := strings.Split(in.Command, " ")
-
-	if len(args) == 0 && len(in.Controllers) == 0 {
-		logger.Warn("Invalid router args")
-		return
-	}
+	logger := slog.With("session_id", sessionID)
 
 	var command Command
 
-	if len(in.Controllers) > 0 {
+	if payload.PathExists("command") {
+		command = Command(payload.GetByPath("command").AsStringDefault(""))
+	} else if len(payload.ObjectKeys()) > 0 {
 		command = START_CONTROLLER
-	} else {
-		command = Command(args[0])
 	}
 
 	next, ok := routes[command]
@@ -231,36 +215,38 @@ func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
 
-	var controllers map[string]Controller
-	if err := json.Unmarshal(ctx.Payload.GetByPath("controllers").ToBytes(), &controllers); err != nil {
-		slog.Error(err.Error())
-		return
-	}
-
-	for name, controller := range controllers {
-		if len(controller.UUIDs) == 0 {
-			continue
-		}
-
-		body := easyjson.NewJSON(controller.Body)
-
-		payload := easyjson.NewJSONObject()
-		payload.SetByPath("declaration", body)
-		payload.SetByPath("uuids", easyjson.JSONFromArray(controller.UUIDs))
-
-		controllerID := generate.UUID(name)
-		controllerIDWithDomain := ctx.Domain.CreateObjectIDWithDomain(
-			ctx.Domain.GetDomainFromObjectID(controller.UUIDs[0]),
-			controllerID.String(),
-			false,
-		)
-
-		payload.SetByPath("name", easyjson.NewJSON(name))
-
-		err := ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.CONTROLLER_START, controllerIDWithDomain, &payload, nil)
-		if err != nil {
+	for _, plugin := range ctx.Payload.ObjectKeys() {
+		var controllers map[string]Controller
+		if err := json.Unmarshal(ctx.Payload.GetByPath(plugin).ToBytes(), &controllers); err != nil {
 			slog.Error(err.Error())
 			return
+		}
+
+		for name, controller := range controllers {
+			if len(controller.UUIDs) == 0 {
+				continue
+			}
+
+			body := easyjson.NewJSON(controller.Body)
+
+			payload := easyjson.NewJSONObject()
+			payload.SetByPath("plugin", easyjson.NewJSON(plugin))
+			payload.SetByPath("declaration", body)
+			payload.SetByPath("uuids", easyjson.JSONFromArray(controller.UUIDs))
+			payload.SetByPath("name", easyjson.NewJSON(name))
+
+			controllerID := generate.UUID(plugin + name)
+			controllerIDWithDomain := ctx.Domain.CreateObjectIDWithDomain(
+				ctx.Domain.GetDomainFromObjectID(controller.UUIDs[0]),
+				controllerID.String(),
+				false,
+			)
+
+			err := ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.CONTROLLER_START, controllerIDWithDomain, &payload, nil)
+			if err != nil {
+				slog.Error(err.Error())
+				return
+			}
 		}
 	}
 
@@ -304,9 +290,6 @@ func PreEgress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		slog.Warn("empty client id")
 		return
 	}
-
-	fmt.Println("!!!!!!!!!! pre egress", ctx.Payload.ToString())
-	fmt.Println()
 
 	if err := ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.EGRESS, clientID, ctx.Payload, nil); err != nil {
 		slog.Warn(err.Error())

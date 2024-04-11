@@ -145,10 +145,11 @@ func (s *sessionTestSuite) Test_SessionRouter_Controllers_Correct() {
 
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("client_id", easyjson.NewJSON(clientID))
-	payload.SetByPath("controllers", easyjson.NewJSON(controllers))
+	payload.SetByPath("viewer", easyjson.NewJSON(controllers))
 
 	err := s.Signal(plugins.JetstreamGlobalSignal, typename, sessionID, &payload, nil)
 	s.NoError(err)
+
 }
 
 func (s *sessionTestSuite) Test_StartSession_Correct() {
@@ -216,19 +217,21 @@ func (s *sessionTestSuite) Test_StartController_Correct() {
 
 	cmdb.ObjectCreate(sessionID, inStatefun.SESSION_TYPE, easyjson.NewJSONObjectWithKeyValue("client_id", easyjson.NewJSON(clientID)))
 
-	controllers := map[string]session.Controller{
-		"test_controller": {
-			Body: map[string]string{
-				"props": "@property:",
+	plugin := map[string]map[string]session.Controller{
+		"viewer": {
+			"test_controller": {
+				Body: map[string]string{
+					"props": "@property:",
+				},
+				UUIDs: []string{"uuid_1", "uuid_2"},
 			},
-			UUIDs: []string{"uuid_1", "uuid_2"},
 		},
 	}
 
 	sub, err := s.SubscribeEgress(inStatefun.EGRESS, clientID)
 	s.Require().NoError(err)
 
-	payload := easyjson.NewJSONObjectWithKeyValue("controllers", easyjson.NewJSON(controllers))
+	payload := easyjson.NewJSON(plugin)
 	err = s.Signal(plugins.JetstreamGlobalSignal, typename, sessionID, &payload, nil)
 	s.Require().NoError(err)
 

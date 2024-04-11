@@ -243,7 +243,6 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 func UpdateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
 	self := ctx.Self
 	body := ctx.GetObjectContext()
-	controllerName, _ := body.GetByPath("name").AsString()
 	controllerPlugin, _ := body.GetByPath("plugin").AsString()
 
 	payload := ctx.Payload

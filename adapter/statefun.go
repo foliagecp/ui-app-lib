@@ -250,7 +250,7 @@ func UpdateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunConte
 	update := payload.GetByPath("result")
 	realObjectID, _ := payload.GetByPath("object_id").AsString()
 
-	path := fmt.Sprintf("payload.plugins.%s.%s.%s", controllerPlugin, controllerName, realObjectID)
+	path := fmt.Sprintf("payload.plugins.%s.%s", controllerPlugin, realObjectID)
 
 	updateReply := easyjson.NewJSONObject()
 	updateReply.SetByPath(path, update)

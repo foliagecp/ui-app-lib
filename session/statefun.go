@@ -125,6 +125,9 @@ func SessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	if payload.PathExists("command") {
 		command = Command(payload.GetByPath("command").AsStringDefault(""))
 	} else if len(payload.ObjectKeys()) > 0 {
+		payload.RemoveByPath("client_id")
+		payload.RemoveByPath("command")
+
 		command = START_CONTROLLER
 	}
 

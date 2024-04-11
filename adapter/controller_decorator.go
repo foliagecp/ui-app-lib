@@ -80,8 +80,6 @@ func parseDecorators(objectID string, payload *easyjson.JSON) map[string]control
 		body := payload.GetByPath(key).AsStringDefault("")
 		tokens := strings.Split(body, ":")
 
-		fmt.Printf("!!!!!!!!! %s key: %s parseDecorators tokens: %v\n", objectID, key, tokens)
-
 		if len(tokens) < 2 {
 			continue
 		}
@@ -102,8 +100,6 @@ func parseDecorators(objectID string, payload *easyjson.JSON) map[string]control
 				slog.Warn(err.Error())
 				continue
 			}
-
-			fmt.Printf("!!!!!!!!! %s extractFunctionAndArgs: f:%s args:%v\n", objectID, f, args)
 
 			decorators[key] = &controllerFunction{
 				id:       objectID,
@@ -134,17 +130,11 @@ func getChildrenUUIDSByLinkType(ctx *sf.StatefunContextProcessor, id, filterLink
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("link_type", easyjson.NewJSON(filterLinkType))
 
-	fmt.Println("!!!!!!!!!!!! getChildrenUUIDSByLinkType: make request")
-	fmt.Println()
-
 	result, err := ctx.Request(sf.AutoRequestSelect, inStatefun.CHILDREN_LINK_TYPE_DECORATOR, id, &payload, nil)
 	if err != nil {
 		slog.Error(err.Error())
 		return []string{}
 	}
-
-	fmt.Println("!!!!!!!!!!!! getChildrenUUIDSByLinkType: result", result.ToString())
-	fmt.Println()
 
 	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
 		slog.Error(result.GetByPath("message").AsString())

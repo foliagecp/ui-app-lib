@@ -103,6 +103,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 	body := ctx.GetObjectContext()
 	body.SetByPath(_CONTROLLER_DECLARATION, payload.GetByPath(_CONTROLLER_DECLARATION))
 	body.SetByPath("name", payload.GetByPath("name"))
+	body.SetByPath("plugin", payload.GetByPath("plugin"))
 
 	cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
 
@@ -243,12 +244,13 @@ func UpdateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunConte
 	self := ctx.Self
 	body := ctx.GetObjectContext()
 	controllerName, _ := body.GetByPath("name").AsString()
+	controllerPlugin, _ := body.GetByPath("plugin").AsString()
 
 	payload := ctx.Payload
 	update := payload.GetByPath("result")
 	realObjectID, _ := payload.GetByPath("object_id").AsString()
 
-	path := fmt.Sprintf("payload.controllers.%s.%s", controllerName, realObjectID)
+	path := fmt.Sprintf("payload.controllers.%s.%s.%s", controllerPlugin, controllerName, realObjectID)
 
 	updateReply := easyjson.NewJSONObject()
 	updateReply.SetByPath(path, update)
@@ -256,9 +258,6 @@ func UpdateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunConte
 	subscribers := getChildrenUUIDSByLinkType(ctx, self.ID, inStatefun.SUBSCRIBER_TYPE)
 
 	slog.Info("Send update to subscribers", "subscribers", subscribers)
-
-	fmt.Println("!!!!!!!!!!!!!!! Send update to subscribers", updateReply.ToString())
-	fmt.Println()
 
 	for _, subID := range subscribers {
 		if err := ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.PREPARE_EGRESS, subID, &updateReply, nil); err != nil {
@@ -279,7 +278,6 @@ func ControllerConstruct(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunCo
 	payload := ctx.Payload
 
 	decorators := parseDecorators(id, payload)
-	fmt.Printf("!!!!!!!!!! %s decorators: %v\n", id, decorators)
 
 	construct := easyjson.NewJSONObject()
 

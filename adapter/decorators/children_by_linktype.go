@@ -1,7 +1,6 @@
 package decorators
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
@@ -31,9 +30,6 @@ func childrenUUIDsByLinkType(_ sf.StatefunExecutor, ctx *sf.StatefunContextProce
 	pattern := common.OutLinkType(ctx.Self.ID, filterLinkType, ">")
 	keys := ctx.Domain.Cache().GetKeysByPattern(pattern)
 
-	fmt.Printf("!!!!!!!!!! decorator childrenUUIDsByLinkType self id: %v\n", ctx.Self.ID)
-	fmt.Printf("!!!!!!!!!! decorator childrenUUIDsByLinkType filter linktype: %v\n", filterLinkType)
-
 	for _, key := range keys {
 		split := strings.Split(key, ".")
 		if len(split) == 0 {
@@ -45,9 +41,6 @@ func childrenUUIDsByLinkType(_ sf.StatefunExecutor, ctx *sf.StatefunContextProce
 	}
 
 	sort.Strings(result)
-
-	fmt.Printf("!!!!!!!!!! decorator childrenUUIDsByLinkType result: %v\n", result)
-	fmt.Println()
 
 	okResponse(ctx, result)
 }

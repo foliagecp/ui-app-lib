@@ -167,6 +167,7 @@ func (s *adapterTestSuite) Test_UpdateController_Correct() {
 
 	controllerBody := easyjson.NewJSONObject()
 	controllerBody.SetByPath("name", easyjson.NewJSON(controllerName))
+	controllerBody.SetByPath("plugin", easyjson.NewJSON("viewer"))
 
 	err = cmdb.ObjectCreate(controllerID, inStatefun.CONTROLLER_TYPE, controllerBody)
 	s.Require().NoError(err)
@@ -194,7 +195,7 @@ func (s *adapterTestSuite) Test_UpdateController_Correct() {
 	msg, err := sub.NextMsg(2 * time.Second)
 	s.Require().NoError(err)
 
-	wantPayload := `{"payload":{"controllers":{"test_controller":{"uuid_1":"some_result"}}}}`
+	wantPayload := `{"payload":{"controllers":{"viewer":{"test_controller":{"uuid_1":"some_result"}}}}}`
 	s.JSONEq(wantPayload, string(msg.Data))
 }
 

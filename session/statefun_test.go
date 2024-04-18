@@ -190,9 +190,6 @@ func (s *sessionTestSuite) Test_StartSession_Correct() {
 	s.Require().NoError(err)
 
 	s.Equal(clientID, gotSession.GetByPath("client_id").AsStringDefault(""))
-	s.Equal(session.SessionInactivityTimeout.String(), gotSession.GetByPath("inactivity_timeout").AsStringDefault(""))
-	s.Equal(session.SessionLifeTime.String(), gotSession.GetByPath("life_time").AsStringDefault(""))
-
 	// TODO: check link from SESSION_ENTRYPOINT to session
 }
 

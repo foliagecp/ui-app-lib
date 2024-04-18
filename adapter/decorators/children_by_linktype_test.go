@@ -1,9 +1,7 @@
 package decorators
 
 import (
-	"fmt"
 	"testing"
-	"time"
 
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/clients/go/db"
@@ -12,7 +10,6 @@ import (
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/sdk/statefun/test"
 	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
-	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -52,18 +49,6 @@ func (s *childrenByLinkTypeTestSuite) Test() {
 
 	wantData := `["hub/disk_1","hub/disk_2"]`
 	s.Equal(wantData, result.GetByPath("data").ToString())
-}
-
-func (s *childrenByLinkTypeTestSuite) Test_External() {
-	nc, err := nats.Connect("nats://nats:foliage@127.0.0.1:4222")
-	s.Require().NoError(err)
-
-	subj := fmt.Sprintf(`request.hub.%s.%s`, inStatefun.CHILDREN_LINK_TYPE_DECORATOR, "hub/152398c7-3bd6-562e-a708-37913053b1fb")
-	data := []byte(`{"payload":{"link_type":"scala_hlm_service-service"}}`)
-	msg, err := nc.Request(subj, data, 5*time.Second)
-	s.Require().NoError(err)
-
-	fmt.Printf("msg.Data: %s\n", msg.Data)
 }
 
 func fillTestData(request sf.SFRequestFunc) error {

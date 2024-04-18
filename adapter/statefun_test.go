@@ -195,7 +195,7 @@ func (s *adapterTestSuite) Test_UpdateController_Correct() {
 	msg, err := sub.NextMsg(2 * time.Second)
 	s.Require().NoError(err)
 
-	wantPayload := `{"payload":{"controllers":{"viewer":{"test_controller":{"uuid_1":"some_result"}}}}}`
+	wantPayload := `{"payload":{"plugins":{"viewer":{"uuid_1":"some_result"}}}}`
 	s.JSONEq(wantPayload, string(msg.Data))
 }
 
@@ -220,10 +220,10 @@ func (s *adapterTestSuite) Test_ConstructController_Correct() {
 	s.Require().NoError(err)
 
 	payload := easyjson.NewJSONObject()
-	payload.SetByPath("props", easyjson.NewJSON("@property:"))
+	payload.SetByPath("props", easyjson.NewJSON("@property:key"))
 
 	result, err := s.Request(sfplugins.GolangLocalRequest, typename, "uuid_1", &payload, nil)
 	s.Require().NoError(err)
 
-	s.JSONEq(objectBody.ToString(), result.GetByPath("result.props").ToString())
+	s.JSONEq(objectBody.GetByPath("key").ToString(), result.GetByPath("result.props").ToString())
 }

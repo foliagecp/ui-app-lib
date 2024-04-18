@@ -5,6 +5,8 @@ const (
 	SESSION_ROUTER           = "functions.ui.app.session.router"
 	SESSION_START            = "functions.ui.app.session.start"
 	SESSION_CLOSE            = "functions.ui.app.session.close"
+	SESSION_WATCH            = "functions.ui.app.session.watch"
+	SESSION_UPDATE_ACTIVITY  = "functions.ui.app.session.update.activity"
 	SESSION_START_CONTROLLER = "functions.ui.app.session.controller.start"
 	SESSION_CLEAR_CONTROLLER = "functions.ui.app.session.controller.clear"
 	PREPARE_EGRESS           = "functions.ui.app.prepare.egress"

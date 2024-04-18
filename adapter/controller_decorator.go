@@ -76,8 +76,12 @@ func (c *controllerFunction) Decorate(ctx *sf.StatefunContextProcessor) easyjson
 func parseDecorators(objectID string, payload *easyjson.JSON) map[string]controllerDecorator {
 	decorators := make(map[string]controllerDecorator)
 
-	for _, key := range payload.ObjectKeys() {
-		body := payload.GetByPath(key).AsStringDefault("")
+	rawDecorators := make(map[string]string)
+	if err := json.Unmarshal(payload.ToBytes(), &rawDecorators); err != nil {
+		return decorators
+	}
+
+	for key, body := range rawDecorators {
 		tokens := strings.Split(body, ":")
 
 		if len(tokens) < 2 {

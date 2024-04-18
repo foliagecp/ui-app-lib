@@ -17,9 +17,8 @@ import (
 )
 
 const (
-	SessionLifeTime          time.Duration = time.Hour * 24
-	SessionInactivityTimeout time.Duration = time.Minute * 15
-	SessionUpdateTimeout     time.Duration = time.Second * 10
+	SessionWatchTimeout      = 5 * time.Second
+	SessionInactivityTimeout = 24 * time.Hour
 )
 
 func RegisterFunctions(runtime *statefun.Runtime) {
@@ -27,6 +26,8 @@ func RegisterFunctions(runtime *statefun.Runtime) {
 	statefun.NewFunctionType(runtime, inStatefun.SESSION_ROUTER, SessionRouter, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.SESSION_START, StartSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLOSE, CloseSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_WATCH, WatchSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_UPDATE_ACTIVITY, UpdateSessionActivity, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.SESSION_START_CONTROLLER, StartController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLEAR_CONTROLLER, ClearController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.PREPARE_EGRESS, PreEgress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
@@ -140,6 +141,7 @@ func SessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	logger.Info("Forward to next route", "next", next)
 
 	ctx.Signal(sf.JetstreamGlobalSignal, next, sessionID, payload, nil)
+	ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.SESSION_UPDATE_ACTIVITY, sessionID, nil, nil)
 }
 
 func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
@@ -162,13 +164,11 @@ func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		return
 	}
 
-	now := time.Now().UnixNano()
+	now := time.Now().Unix()
 
 	body := easyjson.NewJSONObject()
-	body.SetByPath("life_time", easyjson.NewJSON(SessionLifeTime.String()))
-	body.SetByPath("inactivity_timeout", easyjson.NewJSON(SessionInactivityTimeout.String()))
-	body.SetByPath("creation_time", easyjson.NewJSON(now))
-	body.SetByPath("last_activity_time", easyjson.NewJSON(now))
+	body.SetByPath("created_at", easyjson.NewJSON(now))
+	body.SetByPath("updated_at", easyjson.NewJSON(now))
 	body.SetByPath("client_id", payload.GetByPath("client_id"))
 
 	cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
@@ -196,12 +196,50 @@ func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		easyjson.NewJSONObjectWithKeyValue("payload", response).GetPtr(),
 		nil,
 	)
+
+	ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.SESSION_WATCH, sessionID, nil, nil)
+}
+
+func WatchSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+	params := ctx.GetObjectContext()
+	if !params.IsNonEmptyObject() {
+		return
+	}
+
+	now := time.Now().Unix()
+	updatedAt := int64(params.GetByPath("updated_at").AsNumericDefault(float64(now)))
+
+	// session expired
+	if updatedAt+int64(SessionInactivityTimeout.Seconds()) < now {
+		ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.SESSION_CLOSE, ctx.Self.ID, nil, nil)
+		return
+	}
+
+	time.Sleep(SessionWatchTimeout)
+	ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.SESSION_WATCH, ctx.Self.ID, nil, nil)
+}
+
+func UpdateSessionActivity(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+	params := ctx.GetObjectContext()
+	if !params.IsNonEmptyObject() {
+		return
+	}
+
+	now := time.Now().Unix()
+	params.SetByPath("updated_at", easyjson.NewJSON(now))
+
+	ctx.SetObjectContext(params)
 }
 
 func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
 
-	slog.Error(errors.ErrUnsupported.Error())
+	cmdb, err := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
+	if err != nil {
+		return
+	}
+
+	cmdb.ObjectDelete(ctx.Self.ID)
 
 	response := easyjson.NewJSONObject()
 	response.SetByPath("command", easyjson.NewJSON(CLOSE_SESSION))
@@ -238,7 +276,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			payload.SetByPath("uuids", easyjson.JSONFromArray(controller.UUIDs))
 			payload.SetByPath("name", easyjson.NewJSON(name))
 
-			controllerID := generate.UUID(plugin + name)
+			controllerID := generate.UUID(plugin + name + body.ToString())
 			controllerIDWithDomain := ctx.Domain.CreateObjectIDWithDomain(
 				ctx.Domain.GetDomainFromObjectID(controller.UUIDs[0]),
 				controllerID.String(),

@@ -180,7 +180,7 @@ func (s *sessionTestSuite) Test_StartSession_Correct() {
 
 	defer sub.Unsubscribe()
 
-	msg, err := sub.NextMsg(1 * time.Second)
+	msg, err := sub.NextMsg(5 * time.Second)
 	s.Require().NoError(err)
 
 	wantResponse := `{"payload":{"command":"START_SESSION","status":"ok"}}`

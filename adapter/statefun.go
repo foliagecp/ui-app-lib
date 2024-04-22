@@ -26,7 +26,7 @@ func RegisterFunctions(runtime *statefun.Runtime) {
 	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_UPDATE, UpdateControllerObject, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_TRIGGER, ControllerObjectTrigger, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CONSTRUCT, ControllerConstruct, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetAllowedRequestProviders(sfplugins.AutoRequestSelect))
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_UPDATE, UpdateController, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_UPDATE, UpdateController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetMsgAckWaitMs(30000))
 
 	decorators.Register(runtime)
 

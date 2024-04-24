@@ -11,6 +11,7 @@ import (
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/ui-app-lib/adapter/decorators"
 	"github.com/foliagecp/ui-app-lib/internal/common"
+	"github.com/foliagecp/ui-app-lib/internal/egress"
 	"github.com/foliagecp/ui-app-lib/internal/generate"
 	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 )
@@ -259,7 +260,7 @@ func UpdateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunConte
 	slog.Info("Send update to subscribers", "subscribers", subscribers)
 
 	for _, subID := range subscribers {
-		if err := ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.PREPARE_EGRESS, subID, &updateReply, nil); err != nil {
+		if err := egress.SendToSessionEgress(ctx, subID, &updateReply); err != nil {
 			slog.Warn(err.Error())
 		}
 	}

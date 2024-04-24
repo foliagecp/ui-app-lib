@@ -9,7 +9,6 @@ const (
 	SESSION_UPDATE_ACTIVITY  = "functions.ui.app.session.update.activity"
 	SESSION_START_CONTROLLER = "functions.ui.app.session.controller.start"
 	SESSION_CLEAR_CONTROLLER = "functions.ui.app.session.controller.clear"
-	PREPARE_EGRESS           = "functions.ui.app.prepare.egress"
 	EGRESS                   = "ui"
 
 	CONTROLLER_START          = "functions.ui.app.controller.start"

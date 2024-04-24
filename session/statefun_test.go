@@ -159,7 +159,6 @@ func (s *sessionTestSuite) Test_StartSession_Correct() {
 	// prepare crud, schema and related statefun
 	crud.RegisterAllFunctionTypes(s.Runtime())
 	s.OnAfterStartFunction(session.InitSchema, true)
-	s.RegisterFunction(inStatefun.PREPARE_EGRESS, session.PreEgress, cfg)
 	s.RegisterFunction(inStatefun.EGRESS, session.Egress, cfg)
 	// -----------------------------------------
 
@@ -198,7 +197,6 @@ func (s *sessionTestSuite) Test_StartController_Correct() {
 
 	crud.RegisterAllFunctionTypes(s.Runtime())
 	s.RegisterFunction(inStatefun.CONTROLLER_START, adapter.StartController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	s.RegisterFunction(inStatefun.PREPARE_EGRESS, session.PreEgress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	s.RegisterFunction(inStatefun.EGRESS, session.Egress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	s.RegisterFunction(typename, session.StartController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	s.OnAfterStartFunction(session.InitSchema, true)

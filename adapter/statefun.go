@@ -9,12 +9,15 @@ import (
 	"github.com/foliagecp/sdk/clients/go/db"
 	"github.com/foliagecp/sdk/statefun"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
+	"github.com/foliagecp/sdk/statefun/system"
 	"github.com/foliagecp/ui-app-lib/adapter/decorators"
 	"github.com/foliagecp/ui-app-lib/internal/common"
 	"github.com/foliagecp/ui-app-lib/internal/egress"
 	"github.com/foliagecp/ui-app-lib/internal/generate"
 	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 )
+
+var checkUpdates = system.GetEnvMustProceed("UI_APP_LIB_CHECK_UPDATES", true)
 
 const (
 	_CONTROLLER_DECLARATION = "declaration"
@@ -198,7 +201,6 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	}
 
 	controllerDeclaration := controllerBody.GetByPath(_CONTROLLER_DECLARATION)
-
 	realObjectID := body.GetByPath("object_id").AsStringDefault("")
 
 	result, err := ctx.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_CONSTRUCT, realObjectID, &controllerDeclaration, nil)
@@ -206,7 +208,19 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 		result = easyjson.NewJSONObject().GetPtr()
 	}
 
+	if !result.IsNonEmptyObject() {
+		return
+	}
+
 	newResult := result.GetByPath("result")
+
+	if checkUpdates {
+		oldResult := body.GetByPath("result")
+
+		if oldResult.Equals(newResult) {
+			return
+		}
+	}
 
 	body.SetByPath("result", newResult)
 	ctx.SetObjectContext(body)

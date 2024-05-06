@@ -174,31 +174,9 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 
 		cmdb.TriggerObjectSet(objectType, db.UpdateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
 
-		//if controllerObjectBody.IsNonEmptyObject() {
-
-		data, err := cmdb.ObjectRead(controllerObjectID)
-		if err != nil {
-			data = easyjson.NewJSONObject()
-		}
-		result := data.GetByPath("body.result")
-		if result.IsNonEmptyObject() {
-			controllerPlugin, _ := body.GetByPath("plugin").AsString()
-			path := fmt.Sprintf("payload.plugins.%s.%s", controllerPlugin, controllerObjectID)
-
-			updateReply := easyjson.NewJSONObject()
-			updateReply.SetByPath(path, result)
-
-			if err := egress.SendToSessionEgress(ctx, ctx.Self.ID, &updateReply); err != nil {
-				slog.Warn(err.Error())
-			}
-		}
-
-		//}
-
-		//controllerObjectID
-
 		// send to update сontroller object
-		ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, nil, nil)
+		payload := easyjson.NewJSONObjectWithKeyValue("force_update", easyjson.NewJSON(true))
+		ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil)
 	}
 }
 
@@ -237,7 +215,8 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 
 	newResult := result.GetByPath("result")
 
-	if checkUpdates {
+	forceUpdate := ctx.Payload.GetByPath("force_update").AsBoolDefault(false)
+	if !forceUpdate && checkUpdates {
 		oldResult := body.GetByPath("result")
 
 		if oldResult.Equals(newResult) {

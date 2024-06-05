@@ -11,6 +11,7 @@ import (
 	"github.com/foliagecp/sdk/clients/go/db"
 	"github.com/foliagecp/sdk/embedded/graph/crud"
 	"github.com/foliagecp/sdk/statefun"
+	sfMediators "github.com/foliagecp/sdk/statefun/mediator"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/ui-app-lib/internal/common"
 	"github.com/foliagecp/ui-app-lib/internal/egress"
@@ -230,6 +231,24 @@ func UpdateSessionActivity(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcess
 	ctx.SetObjectContext(params)
 }
 
+func JPGQLCtraQueryCustom1(id, query string, ctx *sf.StatefunContextProcessor) ([]string, error) {
+	payload := easyjson.NewJSONObject()
+	payload.SetByPath("query", easyjson.NewJSON(query))
+
+	om := sfMediators.OpMsgFromSfReply(ctx.Request(sf.NatsCoreGlobalRequest, "functions.graph.api.query.jpgql.ctra", id, &payload, nil))
+
+	return om.Data.ObjectKeys(), db.OpErrorFromOpMsg(om)
+}
+
+func JPGQLCtraQueryCustom2(id, query string, ctx *sf.StatefunContextProcessor) ([]string, error) {
+	payload := easyjson.NewJSONObject()
+	payload.SetByPath("query", easyjson.NewJSON(query))
+
+	om := sfMediators.OpMsgFromSfReply(ctx.Request(sf.AutoRequestSelect, "functions.graph.api.query.jpgql.ctra", id, &payload, nil))
+
+	return om.Data.ObjectKeys(), db.OpErrorFromOpMsg(om)
+}
+
 func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	fmt.Println("------- CLOSING SESSION")
 	sessionID := ctx.Self.ID
@@ -246,12 +265,19 @@ func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	}
 
 	// Find all controllers of this session and delete them ---------------------------------------
-	ids1, err1 := dbc.Query.JPGQLCtraQuery("root", ".*")
-	fmt.Println("QUERY ROOT RESULT", ids1, err1)
-	ids1, err1 = dbc.Query.JPGQLCtraQuery("types", ".*")
-	fmt.Println("QUERY TYPES RESULT", ids1, err1)
-	ids1, err1 = dbc.Query.JPGQLCtraQuery("ui_session", ".*")
-	fmt.Println("QUERY ui_session RESULT", ids1, err1)
+	ids1, err1 := JPGQLCtraQueryCustom1("root", ".*", ctx)
+	fmt.Println("QUERY ROOT RESULT 1", ids1, err1)
+	ids1, err1 = JPGQLCtraQueryCustom1("types", ".*", ctx)
+	fmt.Println("QUERY TYPES RESULT 1", ids1, err1)
+	ids1, err1 = JPGQLCtraQueryCustom1("ui_session", ".*", ctx)
+	fmt.Println("QUERY ui_session RESULT 1", ids1, err1)
+
+	ids1, err1 = JPGQLCtraQueryCustom2("root", ".*", ctx)
+	fmt.Println("QUERY ROOT RESULT 2", ids1, err1)
+	ids1, err1 = JPGQLCtraQueryCustom2("types", ".*", ctx)
+	fmt.Println("QUERY TYPES RESULT 2", ids1, err1)
+	ids1, err1 = JPGQLCtraQueryCustom2("ui_session", ".*", ctx)
+	fmt.Println("QUERY ui_session RESULT 2", ids1, err1)
 
 	fmt.Println("QUERY CONTROLLERS", ctx.Self.ID, fmt.Sprintf(".*[type('%s')]", inStatefun.CONTROLLER_TYPE))
 	ids, err := dbc.Query.JPGQLCtraQuery(ctx.Self.ID, fmt.Sprintf(".*[type('%s')]", inStatefun.CONTROLLER_TYPE))

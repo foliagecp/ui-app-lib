@@ -246,6 +246,13 @@ func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	}
 
 	// Find all controllers of this session and delete them ---------------------------------------
+	ids1, err1 := dbc.Query.JPGQLCtraQuery("root", ".*")
+	fmt.Println("QUERY ROOT RESULT", ids1, err1)
+	ids1, err1 = dbc.Query.JPGQLCtraQuery("types", ".*")
+	fmt.Println("QUERY TYPES RESULT", ids1, err1)
+	ids1, err1 = dbc.Query.JPGQLCtraQuery("ui_session", ".*")
+	fmt.Println("QUERY ui_session RESULT", ids1, err1)
+
 	fmt.Println("QUERY CONTROLLERS", ctx.Self.ID, fmt.Sprintf(".*[type('%s')]", inStatefun.CONTROLLER_TYPE))
 	ids, err := dbc.Query.JPGQLCtraQuery(ctx.Self.ID, fmt.Sprintf(".*[type('%s')]", inStatefun.CONTROLLER_TYPE))
 	fmt.Println("QUERY CONTROLLERS RESULT", ids, err)

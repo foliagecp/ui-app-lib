@@ -250,7 +250,6 @@ func JPGQLCtraQueryCustom2(id, query string, ctx *sf.StatefunContextProcessor) (
 }
 
 func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
-	fmt.Println("------- CLOSING SESSION")
 	sessionID := ctx.Self.ID
 
 	dbc, err := db.NewDBSyncClientFromRequestFunction(ctx.Request)
@@ -265,21 +264,18 @@ func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	}
 
 	// Find all controllers of this session and delete them ---------------------------------------
-	fmt.Println("QUERY CONTROLLERS", ctx.Self.ID, fmt.Sprintf(".*[type('%s')]", inStatefun.CONTROLLER_TYPE))
 	ids, err := dbc.Query.JPGQLCtraQuery(ctx.Self.ID, fmt.Sprintf(".*[type('%s')]", inStatefun.CONTROLLER_TYPE))
-	fmt.Println("QUERY CONTROLLERS RESULT", ids, err)
 	if err != nil {
 		slog.Error(err.Error())
 		return
 	}
 
 	for _, controllerId := range ids {
-		fmt.Println("DELETING CONTROLLER", controllerId)
 		cmdb.ObjectDelete(controllerId)
 	}
 	// --------------------------------------------------------------------------------------------
 
-	//cmdb.ObjectDelete(ctx.Self.ID)
+	cmdb.ObjectDelete(ctx.Self.ID)
 
 	response := easyjson.NewJSONObject()
 	response.SetByPath("command", easyjson.NewJSON(CLOSE_SESSION))

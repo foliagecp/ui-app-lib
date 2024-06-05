@@ -21,7 +21,7 @@ import (
 const (
 	SessionWatchTimeout = 60 * time.Second
 	//SessionInactivityTimeout = 24 * time.Hour
-	SessionInactivityTimeout = 2 * time.Minute
+	SessionInactivityTimeout = 1 * time.Minute
 )
 
 func RegisterFunctions(runtime *statefun.Runtime) {
@@ -231,6 +231,7 @@ func UpdateSessionActivity(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcess
 }
 
 func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+	fmt.Println("------- CLOSING SESSION")
 	sessionID := ctx.Self.ID
 
 	dbc, err := db.NewDBSyncClientFromRequestFunction(ctx.Request)
@@ -252,6 +253,7 @@ func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	}
 
 	for _, controllerId := range ids {
+		fmt.Println("DELETING CONTROLLER", controllerId)
 		cmdb.ObjectDelete(controllerId)
 	}
 	// --------------------------------------------------------------------------------------------

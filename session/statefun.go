@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -18,8 +19,9 @@ import (
 )
 
 const (
-	SessionWatchTimeout      = 5 * time.Second
-	SessionInactivityTimeout = 24 * time.Hour
+	SessionWatchTimeout = 60 * time.Second
+	//SessionInactivityTimeout = 24 * time.Hour
+	SessionInactivityTimeout = 2 * time.Minute
 )
 
 func RegisterFunctions(runtime *statefun.Runtime) {
@@ -182,6 +184,8 @@ func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		return
 	}
 
+	// TODO: send signal to RemoveExceedingSessions which will remove oldes existing session to prevent sessions and controllers overflow
+
 	response := easyjson.NewJSONObject()
 	response.SetByPath("command", easyjson.NewJSON(START_SESSION))
 	response.SetByPath("status", easyjson.NewJSON("ok"))
@@ -200,14 +204,18 @@ func WatchSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	now := time.Now().Unix()
 	updatedAt := int64(params.GetByPath("updated_at").AsNumericDefault(float64(now)))
 
+	// TODO: Send IsAlive command to frontend and remove session eventually if no reply came back
+
 	// session expired
 	if updatedAt+int64(SessionInactivityTimeout.Seconds()) < now {
 		ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.SESSION_CLOSE, ctx.Self.ID, nil, nil)
 		return
 	}
 
-	time.Sleep(SessionWatchTimeout)
-	ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.SESSION_WATCH, ctx.Self.ID, nil, nil)
+	go func() { // Release NATS msg by running in a separate go routine. If sleep > nats msg.ackTimeout - NATS msg will be redelivered
+		time.Sleep(SessionWatchTimeout)
+		ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.SESSION_WATCH, ctx.Self.ID, nil, nil)
+	}()
 }
 
 func UpdateSessionActivity(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
@@ -225,10 +233,28 @@ func UpdateSessionActivity(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcess
 func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
 
-	cmdb, err := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
+	dbc, err := db.NewDBSyncClientFromRequestFunction(ctx.Request)
 	if err != nil {
+		slog.Error(err.Error())
 		return
 	}
+	cmdb, err := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
+	if err != nil {
+		slog.Error(err.Error())
+		return
+	}
+
+	// Find all controllers of this session and delete them ---------------------------------------
+	ids, err := dbc.Query.JPGQLCtraQuery(ctx.Self.ID, fmt.Sprintf(".*[type('%s')]", inStatefun.CONTROLLER_TYPE))
+	if err != nil {
+		slog.Error(err.Error())
+		return
+	}
+
+	for _, controllerId := range ids {
+		cmdb.ObjectDelete(controllerId)
+	}
+	// --------------------------------------------------------------------------------------------
 
 	cmdb.ObjectDelete(ctx.Self.ID)
 

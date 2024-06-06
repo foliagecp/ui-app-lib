@@ -197,6 +197,7 @@ func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 }
 
 func WatchSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+	fmt.Println("------- WATCHING SESSION", ctx.Self.ID)
 	params := ctx.GetObjectContext()
 	if !params.IsNonEmptyObject() {
 		return

@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	SessionWatchTimeout      = 60 * time.Second
-	SessionInactivityTimeout = 12 * time.Hour
+	SessionWatchTimeout = 60 * time.Second
+	//SessionInactivityTimeout = 12 * time.Hour
+	SessionInactivityTimeout = 1 * time.Minute
 )
 
 func RegisterFunctions(runtime *statefun.Runtime) {

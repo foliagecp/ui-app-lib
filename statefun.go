@@ -19,10 +19,9 @@ import (
 )
 
 const (
-	sessionsWatchTimeout = 60 * time.Second
-	//SessionInactivityTimeout = 12 * time.Hour
-	sessionInactivityTimeout = 1 * time.Minute
-	maxSessionsCount         = 3
+	sessionsWatchTimeout     = 60 * time.Second
+	sessionInactivityTimeout = 12 * time.Hour
+	maxSessionsCount         = 10
 )
 
 func sessionsKeeper(runtime *statefun.Runtime) {
@@ -37,7 +36,6 @@ func sessionsKeeper(runtime *statefun.Runtime) {
 		now := time.Now().Unix()
 
 		ids, err := dbc.Query.JPGQLCtraQuery(inStatefun.SESSION_TYPE, fmt.Sprintf(".*[type('%s')]", crud.OBJECT_TYPELINK))
-		fmt.Println(">>>>>>>>> 1", ids)
 		if err != nil {
 			slog.Error(err.Error())
 			return
@@ -47,11 +45,9 @@ func sessionsKeeper(runtime *statefun.Runtime) {
 		stillOpenedSessionsUpdateTimes := map[string]int64{}
 		for _, sessionId := range ids {
 			sdata, err := dbc.Graph.VertexRead(sessionId)
-			fmt.Println(">>>>>>>>> 2", sessionId, sdata)
 			if err == nil {
 				updatedAt := int64(sdata.GetByPath("body.updated_at").AsNumericDefault(0))
 				if updatedAt+int64(sessionInactivityTimeout.Seconds()) < now {
-					fmt.Println(">>>>>>>>> 2.1", sessionId, sdata)
 					runtime.Signal(sf.JetstreamGlobalSignal, inStatefun.SESSION_CLOSE, sessionId, nil, nil)
 				} else {
 					stillOpenedSessionsUpdateTimes[sessionId] = updatedAt
@@ -63,7 +59,6 @@ func sessionsKeeper(runtime *statefun.Runtime) {
 		// Closing exceeding sessions -----------------------------------------
 		exceedingSessionsCount := len(stillOpenedSessionsUpdateTimes) - maxSessionsCount
 		if exceedingSessionsCount > 0 {
-			fmt.Println(">>>>>>>>> 3", exceedingSessionsCount)
 			sessionIdsFromOldest2Newest := make([]string, 0, len(stillOpenedSessionsUpdateTimes))
 			for key := range stillOpenedSessionsUpdateTimes {
 				sessionIdsFromOldest2Newest = append(sessionIdsFromOldest2Newest, key)
@@ -74,7 +69,6 @@ func sessionsKeeper(runtime *statefun.Runtime) {
 			})
 
 			for i := 0; i < exceedingSessionsCount; i++ {
-				fmt.Println(">>>>>>>>> 3.1", sessionIdsFromOldest2Newest[i])
 				runtime.Signal(sf.JetstreamGlobalSignal, inStatefun.SESSION_CLOSE, sessionIdsFromOldest2Newest[i], nil, nil)
 			}
 		}

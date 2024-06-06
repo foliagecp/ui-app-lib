@@ -177,8 +177,6 @@ func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		return
 	}
 
-	// TODO: send signal to RemoveExceedingSessions which will remove oldes existing session to prevent sessions and controllers overflow
-
 	response := easyjson.NewJSONObject()
 	response.SetByPath("command", easyjson.NewJSON(START_SESSION))
 	response.SetByPath("status", easyjson.NewJSON("ok"))

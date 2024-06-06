@@ -11,7 +11,6 @@ import (
 	"github.com/foliagecp/sdk/clients/go/db"
 	"github.com/foliagecp/sdk/embedded/graph/crud"
 	"github.com/foliagecp/sdk/statefun"
-	sfMediators "github.com/foliagecp/sdk/statefun/mediator"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/ui-app-lib/internal/common"
 	"github.com/foliagecp/ui-app-lib/internal/egress"
@@ -19,18 +18,11 @@ import (
 	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 )
 
-const (
-	SessionWatchTimeout = 60 * time.Second
-	//SessionInactivityTimeout = 12 * time.Hour
-	SessionInactivityTimeout = 1 * time.Minute
-)
-
 func RegisterFunctions(runtime *statefun.Runtime) {
 	statefun.NewFunctionType(runtime, inStatefun.INGRESS, Ingress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.SESSION_ROUTER, SessionRouter, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.SESSION_START, StartSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLOSE, CloseSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_WATCH, WatchSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetMsgAckWaitMs(int(SessionWatchTimeout * time.Millisecond * 2)))
 	statefun.NewFunctionType(runtime, inStatefun.SESSION_UPDATE_ACTIVITY, UpdateSessionActivity, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.SESSION_START_CONTROLLER, StartController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLEAR_CONTROLLER, ClearController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
@@ -192,30 +184,6 @@ func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	response.SetByPath("status", easyjson.NewJSON("ok"))
 
 	egress.SendToSessionEgress(ctx, sessionID, easyjson.NewJSONObjectWithKeyValue("payload", response).GetPtr())
-
-	ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.SESSION_WATCH, sessionID, nil, nil)
-}
-
-func WatchSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
-	fmt.Println("------- WATCHING SESSION", ctx.Self.ID)
-	params := ctx.GetObjectContext()
-	if !params.IsNonEmptyObject() {
-		return
-	}
-
-	now := time.Now().Unix()
-	updatedAt := int64(params.GetByPath("updated_at").AsNumericDefault(float64(now)))
-
-	// TODO: Send IsAlive command to frontend and remove session eventually if no reply came back
-
-	// session expired
-	if updatedAt+int64(SessionInactivityTimeout.Seconds()) < now {
-		ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.SESSION_CLOSE, ctx.Self.ID, nil, nil)
-		return
-	}
-
-	time.Sleep(SessionWatchTimeout)
-	ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.SESSION_WATCH, ctx.Self.ID, nil, nil)
 }
 
 func UpdateSessionActivity(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
@@ -228,24 +196,6 @@ func UpdateSessionActivity(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcess
 	params.SetByPath("updated_at", easyjson.NewJSON(now))
 
 	ctx.SetObjectContext(params)
-}
-
-func JPGQLCtraQueryCustom1(id, query string, ctx *sf.StatefunContextProcessor) ([]string, error) {
-	payload := easyjson.NewJSONObject()
-	payload.SetByPath("query", easyjson.NewJSON(query))
-
-	om := sfMediators.OpMsgFromSfReply(ctx.Request(sf.NatsCoreGlobalRequest, "functions.graph.api.query.jpgql.ctra", id, &payload, nil))
-
-	return om.Data.ObjectKeys(), db.OpErrorFromOpMsg(om)
-}
-
-func JPGQLCtraQueryCustom2(id, query string, ctx *sf.StatefunContextProcessor) ([]string, error) {
-	payload := easyjson.NewJSONObject()
-	payload.SetByPath("query", easyjson.NewJSON(query))
-
-	om := sfMediators.OpMsgFromSfReply(ctx.Request(sf.AutoRequestSelect, "functions.graph.api.query.jpgql.ctra", id, &payload, nil))
-
-	return om.Data.ObjectKeys(), db.OpErrorFromOpMsg(om)
 }
 
 func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {

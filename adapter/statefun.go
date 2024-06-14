@@ -104,6 +104,8 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 	caller := ctx.Caller
 	payload := ctx.Payload
 
+	sessionId := payload.GetByPath("session_id").AsStringDefault("")
+
 	body := ctx.GetObjectContext()
 	body.SetByPath(_CONTROLLER_DECLARATION, payload.GetByPath(_CONTROLLER_DECLARATION))
 	body.SetByPath("name", payload.GetByPath("name"))
@@ -175,7 +177,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 		cmdb.TriggerObjectSet(objectType, db.UpdateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
 
 		// send to update сontroller object
-		payload := easyjson.NewJSONObjectWithKeyValue("force_update", easyjson.NewJSON(true))
+		payload := easyjson.NewJSONObjectWithKeyValue("force_update_session_id", easyjson.NewJSON(sessionId))
 		ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil)
 	}
 }
@@ -215,8 +217,8 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 
 	newResult := result.GetByPath("result")
 
-	forceUpdate := ctx.Payload.GetByPath("force_update").AsBoolDefault(false)
-	if !forceUpdate && checkUpdates {
+	forceUpdateSessionId := ctx.Payload.GetByPath("force_update_session_id").AsStringDefault("")
+	if len(forceUpdateSessionId) == 0 && checkUpdates {
 		oldResult := body.GetByPath("result")
 
 		if oldResult.Equals(newResult) {
@@ -230,6 +232,9 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	update := easyjson.NewJSONObject()
 	update.SetByPath("result", newResult)
 	update.SetByPath("object_id", easyjson.NewJSON(realObjectID))
+	if len(forceUpdateSessionId) > 0 {
+		update.SetByPath("force_update_session_id", easyjson.NewJSON(forceUpdateSessionId))
+	}
 
 	slog.Info("Send update upstream to controller", "id", parentControllerID)
 	// send update to controller subs
@@ -263,6 +268,7 @@ func UpdateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunConte
 	controllerPlugin, _ := body.GetByPath("plugin").AsString()
 
 	payload := ctx.Payload
+	forceUpdateSessionId := ctx.Payload.GetByPath("force_update_session_id").AsStringDefault("")
 	update := payload.GetByPath("result")
 	realObjectID, _ := payload.GetByPath("object_id").AsString()
 
@@ -275,8 +281,14 @@ func UpdateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunConte
 
 	slog.Info("Send update to subscribers", "subscribers", subscribers)
 
-	for _, subID := range subscribers {
-		if err := egress.SendToSessionEgress(ctx, subID, &updateReply); err != nil {
+	if len(forceUpdateSessionId) == 0 {
+		for _, subID := range subscribers {
+			if err := egress.SendToSessionEgress(ctx, subID, &updateReply); err != nil {
+				slog.Warn(err.Error())
+			}
+		}
+	} else {
+		if err := egress.SendToSessionEgress(ctx, forceUpdateSessionId, &updateReply); err != nil {
 			slog.Warn(err.Error())
 		}
 	}

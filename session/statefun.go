@@ -262,6 +262,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			payload.SetByPath("plugin", easyjson.NewJSON(plugin))
 			payload.SetByPath("declaration", body)
 			payload.SetByPath("uuids", easyjson.JSONFromArray(controller.UUIDs))
+			payload.SetByPath("session_id", easyjson.NewJSON(sessionID))
 			payload.SetByPath("name", easyjson.NewJSON(name))
 
 			controllerID := generate.UUID(plugin + name + body.ToString())

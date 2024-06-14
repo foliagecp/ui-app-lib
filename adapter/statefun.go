@@ -131,7 +131,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 
 	uuids, _ := payload.GetByPath("uuids").AsArrayString()
 	for _, objectUUID := range uuids {
-		controllerObjectID := generate.UUID(self.ID + objectUUID).String()
+		controllerObjectID := generate.UUID(objectUUID + "ui_ctrl_obj").String()
 		controllerObjectBody := easyjson.NewJSONObject()
 		controllerObjectBody.SetByPath("object_id", easyjson.NewJSON(objectUUID))
 		controllerObjectBody.SetByPath("parent", easyjson.NewJSON(self.ID))

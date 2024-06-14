@@ -4,7 +4,7 @@ go 1.21.0
 
 require (
 	github.com/foliagecp/easyjson v0.1.0
-	github.com/foliagecp/sdk v0.1.3-0.20240613113015-d78e10a91fcf
+	github.com/foliagecp/sdk v0.1.3-0.20240614123122-31ba3df32dd5
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.7.0
 )

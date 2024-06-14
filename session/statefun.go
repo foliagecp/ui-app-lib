@@ -210,7 +210,7 @@ func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		return
 	}
 
-	// Find all ui controller objects of this session and delete them -----------------------------
+	/*// Find all ui controller objects of this session and delete them -----------------------------
 	ids, err := dbc.Query.JPGQLCtraQuery(ctx.Self.ID, fmt.Sprintf(".*[type('%s')].*[type('%s')]", inStatefun.CONTROLLER_TYPE, inStatefun.CONTROLLER_OBJECT_TYPE))
 	if err != nil {
 		slog.Error(err.Error())
@@ -220,9 +220,9 @@ func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	for _, controllerObjectId := range ids {
 		cmdb.ObjectDelete(controllerObjectId)
 	}
-	// --------------------------------------------------------------------------------------------
+	// --------------------------------------------------------------------------------------------*/
 	// Find all controllers of this session and delete them ---------------------------------------
-	ids, err = dbc.Query.JPGQLCtraQuery(ctx.Self.ID, fmt.Sprintf(".*[type('%s')]", inStatefun.CONTROLLER_TYPE))
+	ids, err := dbc.Query.JPGQLCtraQuery(ctx.Self.ID, fmt.Sprintf(".*[type('%s')]", inStatefun.CONTROLLER_TYPE))
 	if err != nil {
 		slog.Error(err.Error())
 		return

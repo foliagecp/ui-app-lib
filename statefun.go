@@ -21,7 +21,7 @@ import (
 const (
 	sessionsWatchTimeout     = 60 * time.Second
 	sessionInactivityTimeout = 12 * time.Hour
-	maxSessionsCount         = 6
+	maxSessionsCount         = 20
 )
 
 func sessionsKeeper(runtime *statefun.Runtime) {

@@ -3,7 +3,6 @@ package session
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -199,11 +198,11 @@ func UpdateSessionActivity(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcess
 func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
 
-	dbc, err := db.NewDBSyncClientFromRequestFunction(ctx.Request)
+	/*dbc, err := db.NewDBSyncClientFromRequestFunction(ctx.Request)
 	if err != nil {
 		slog.Error(err.Error())
 		return
-	}
+	}*/
 	cmdb, err := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
 	if err != nil {
 		slog.Error(err.Error())
@@ -221,7 +220,7 @@ func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		cmdb.ObjectDelete(controllerObjectId)
 	}
 	// --------------------------------------------------------------------------------------------*/
-	// Find all controllers of this session and delete them ---------------------------------------
+	/*// Find all controllers of this session and delete them ---------------------------------------
 	ids, err := dbc.Query.JPGQLCtraQuery(ctx.Self.ID, fmt.Sprintf(".*[type('%s')]", inStatefun.CONTROLLER_TYPE))
 	if err != nil {
 		slog.Error(err.Error())
@@ -231,7 +230,7 @@ func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	for _, controllerId := range ids {
 		cmdb.ObjectDelete(controllerId)
 	}
-	// --------------------------------------------------------------------------------------------
+	// --------------------------------------------------------------------------------------------*/
 
 	cmdb.ObjectDelete(ctx.Self.ID)
 
@@ -265,7 +264,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			payload.SetByPath("uuids", easyjson.JSONFromArray(controller.UUIDs))
 			payload.SetByPath("name", easyjson.NewJSON(name))
 
-			controllerID := generate.UUID(plugin + name + body.ToString() + sessionID)
+			controllerID := generate.UUID(plugin + name + body.ToString())
 			controllerIDWithDomain := ctx.Domain.CreateObjectIDWithDomain(
 				ctx.Domain.GetDomainFromObjectID(controller.UUIDs[0]),
 				controllerID.String(),

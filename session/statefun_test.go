@@ -53,7 +53,7 @@ func (s *sessionTestSuite) Test_Ingress_SendSignal_Code() {
 	clientID := uuid.New()
 	payload := easyjson.NewJSONObject()
 
-	err := s.Signal(plugins.AutoSignalSelect, typename, clientID.String(), &payload, nil)
+	err := s.Signal(plugins.JetstreamGlobalSignal, typename, clientID.String(), &payload, nil)
 	s.NoError(err)
 }
 
@@ -86,7 +86,7 @@ func (s *sessionTestSuite) Test_SessionRouter_EmptyCommand() {
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("client_id", easyjson.NewJSON(clientID))
 
-	err := s.Signal(plugins.AutoSignalSelect, typename, sessionID, &payload, nil)
+	err := s.Signal(plugins.JetstreamGlobalSignal, typename, sessionID, &payload, nil)
 	s.NoError(err)
 }
 
@@ -104,7 +104,7 @@ func (s *sessionTestSuite) Test_SessionRouter_InvalidCommand() {
 	payload.SetByPath("client_id", easyjson.NewJSON(clientID))
 	payload.SetByPath("command", easyjson.NewJSON("START"))
 
-	err := s.Signal(plugins.AutoSignalSelect, typename, sessionID, &payload, nil)
+	err := s.Signal(plugins.JetstreamGlobalSignal, typename, sessionID, &payload, nil)
 	s.NoError(err)
 }
 
@@ -122,7 +122,7 @@ func (s *sessionTestSuite) Test_SessionRouter_StartSession_Correct() {
 	payload.SetByPath("client_id", easyjson.NewJSON(clientID))
 	payload.SetByPath("command", easyjson.NewJSON(session.START_SESSION))
 
-	err := s.Signal(plugins.AutoSignalSelect, typename, sessionID, &payload, nil)
+	err := s.Signal(plugins.JetstreamGlobalSignal, typename, sessionID, &payload, nil)
 	s.NoError(err)
 }
 
@@ -147,7 +147,7 @@ func (s *sessionTestSuite) Test_SessionRouter_Controllers_Correct() {
 	payload.SetByPath("client_id", easyjson.NewJSON(clientID))
 	payload.SetByPath("viewer", easyjson.NewJSON(controllers))
 
-	err := s.Signal(plugins.AutoSignalSelect, typename, sessionID, &payload, nil)
+	err := s.Signal(plugins.JetstreamGlobalSignal, typename, sessionID, &payload, nil)
 	s.NoError(err)
 
 }
@@ -171,7 +171,7 @@ func (s *sessionTestSuite) Test_StartSession_Correct() {
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("client_id", easyjson.NewJSON(clientID))
 
-	err := s.Signal(plugins.AutoSignalSelect, typename, sessionID, &payload, nil)
+	err := s.Signal(plugins.JetstreamGlobalSignal, typename, sessionID, &payload, nil)
 	s.Require().NoError(err)
 
 	sub, err := s.SubscribeEgress(inStatefun.EGRESS, clientID)
@@ -227,7 +227,7 @@ func (s *sessionTestSuite) Test_StartController_Correct() {
 	s.Require().NoError(err)
 
 	payload := easyjson.NewJSON(plugin)
-	err = s.Signal(plugins.AutoSignalSelect, typename, sessionID, &payload, nil)
+	err = s.Signal(plugins.JetstreamGlobalSignal, typename, sessionID, &payload, nil)
 	s.Require().NoError(err)
 
 	msg, err := sub.NextMsg(1 * time.Second)

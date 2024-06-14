@@ -85,7 +85,7 @@ func (s *adapterTestSuite) Test_StartController_Correct() {
 	payload.SetByPath("declaration", controllerDeclaration)
 	payload.SetByPath("uuids", easyjson.JSONFromArray(uuids))
 
-	err = s.Signal(sfplugins.AutoSignalSelect, typename, controllerID, &payload, nil)
+	err = s.Signal(sfplugins.JetstreamGlobalSignal, typename, controllerID, &payload, nil)
 	s.Require().NoError(err)
 
 	time.Sleep(1 * time.Second)
@@ -189,7 +189,7 @@ func (s *adapterTestSuite) Test_UpdateController_Correct() {
 	sub, err := s.SubscribeEgress(inStatefun.EGRESS, clientID)
 	s.Require().NoError(err)
 
-	err = s.Signal(sfplugins.AutoSignalSelect, typename, controllerID, &payload, nil)
+	err = s.Signal(sfplugins.JetstreamGlobalSignal, typename, controllerID, &payload, nil)
 	s.Require().NoError(err)
 
 	msg, err := sub.NextMsg(2 * time.Second)

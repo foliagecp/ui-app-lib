@@ -176,7 +176,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 
 		// send to update сontroller object
 		payload := easyjson.NewJSONObjectWithKeyValue("force_update", easyjson.NewJSON(true))
-		ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil)
+		ctx.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil)
 	}
 }
 
@@ -233,7 +233,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 
 	slog.Info("Send update upstream to controller", "id", parentControllerID)
 	// send update to controller subs
-	ctx.Signal(sfplugins.JetstreamGlobalSignal, inStatefun.CONTROLLER_UPDATE, parentControllerID, &update, nil)
+	ctx.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_UPDATE, parentControllerID, &update, nil)
 }
 
 func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
@@ -249,7 +249,7 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 		controllerObjectID := s[len(s)-2]
 
 		updatePayload := easyjson.NewJSONObject()
-		err := ctxProcessor.Signal(sfplugins.JetstreamGlobalSignal,
+		err := ctxProcessor.Signal(sfplugins.AutoSignalSelect,
 			inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &updatePayload, nil)
 		if err != nil {
 			slog.Warn(err.Error())

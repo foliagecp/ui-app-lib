@@ -27,7 +27,7 @@ func SendToSessionEgress(ctx *sf.StatefunContextProcessor, sessionID string, pay
 		return err
 	}
 
-	return ctx.Signal(sf.AutoSignalSelect, inStatefun.EGRESS, generateEgressID(clientID), payload, nil)
+	return ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.EGRESS, generateEgressID(clientID), payload, nil)
 }
 
 func ClientIDFromEgressID(id string) string {

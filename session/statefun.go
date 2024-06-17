@@ -85,7 +85,7 @@ func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 	payload.SetByPath("client_id", easyjson.NewJSON(id))
 
-	if err := ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.SESSION_ROUTER, sessionID, payload, nil); err != nil {
+	if err := ctx.Signal(sf.AutoSignalSelect, inStatefun.SESSION_ROUTER, sessionID, payload, nil); err != nil {
 		slog.Warn(err.Error())
 	}
 }
@@ -134,8 +134,8 @@ func SessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 	logger.Info("Forward to next route", "next", next)
 
-	ctx.Signal(sf.JetstreamGlobalSignal, next, sessionID, payload, nil)
-	ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.SESSION_UPDATE_ACTIVITY, sessionID, nil, nil)
+	ctx.Signal(sf.AutoSignalSelect, next, sessionID, payload, nil)
+	ctx.Signal(sf.AutoSignalSelect, inStatefun.SESSION_UPDATE_ACTIVITY, sessionID, nil, nil)
 }
 
 func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
@@ -272,7 +272,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 				false,
 			)
 
-			err := ctx.Signal(sf.JetstreamGlobalSignal, inStatefun.CONTROLLER_START, controllerIDWithDomain, &payload, nil)
+			err := ctx.Signal(sf.AutoSignalSelect, inStatefun.CONTROLLER_START, controllerIDWithDomain, &payload, nil)
 			if err != nil {
 				slog.Error(err.Error())
 				return

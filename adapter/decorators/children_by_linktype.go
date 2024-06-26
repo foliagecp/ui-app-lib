@@ -2,8 +2,8 @@ package decorators
 
 import (
 	"sort"
-	"strings"
 
+	"github.com/foliagecp/sdk/statefun/logger"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/ui-app-lib/internal/common"
 )
@@ -26,20 +26,22 @@ func childrenUUIDsByLinkType(_ sf.StatefunExecutor, ctx *sf.StatefunContextProce
 		return
 	}
 
-	result := make([]string, 0)
-	pattern := common.OutLinkType(ctx.Self.ID, filterLinkType, ">")
-	keys := ctx.Domain.Cache().GetKeysByPattern(pattern)
+	db := common.MustDBClient(ctx.Request)
 
-	for _, key := range keys {
-		split := strings.Split(key, ".")
-		if len(split) == 0 {
-			continue
-		}
-
-		lastkey := split[len(split)-1]
-		result = append(result, lastkey)
+	data, err := db.Graph.VertexRead(ctx.Self.ID)
+	if err != nil {
+		logger.Logln(logger.ErrorLevel, err.Error())
+		return
 	}
 
+	result := []string{}
+	for i := 0; i < data.GetByPath("links.out.names").ArraySize(); i++ {
+		tp := data.GetByPath("links.out.types").ArrayElement(i).AsStringDefault("")
+		toId := data.GetByPath("links.out.ids").ArrayElement(i).AsStringDefault("")
+		if tp == filterLinkType {
+			result = append(result, toId)
+		}
+	}
 	sort.Strings(result)
 
 	okResponse(ctx, result)

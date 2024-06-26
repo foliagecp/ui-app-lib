@@ -1,8 +1,7 @@
 package decorators
 
 import (
-	"strings"
-
+	"github.com/foliagecp/sdk/statefun/logger"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/ui-app-lib/internal/common"
 )
@@ -37,34 +36,32 @@ func linksByType(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		return
 	}
 
-	c := common.MustCMDBClient(ctx.Request)
-	result := make([]link, 0)
+	db := common.MustDBClient(ctx.Request)
+	data, err := db.Graph.VertexRead(ctx.Self.ID)
+	if err != nil {
+		logger.Logln(logger.ErrorLevel, err.Error())
+		return
+	}
 
-	outPattern := common.OutLinkType(ctx.Self.ID, filterLinkType, ">")
-	for _, key := range ctx.Domain.Cache().GetKeysByPattern(outPattern) {
-		split := strings.Split(key, ".")
-		if len(split) == 0 {
+	result := []link{}
+
+	for i := 0; i < data.GetByPath("links.out.names").ArraySize(); i++ {
+		linkType := data.GetByPath("links.out.types").ArrayElement(i).AsStringDefault("")
+		toId := data.GetByPath("links.out.ids").ArrayElement(i).AsStringDefault("")
+		if linkType != filterLinkType {
 			continue
 		}
-
 		result = append(result, link{
 			Source: ctx.Self.ID,
-			Target: split[len(split)-1],
+			Target: toId,
 			Type:   filterLinkType,
 		})
 	}
 
-	inPattern := common.InLinkKeyPattern(ctx.Self.ID, ">")
+	for i := 0; i < data.GetByPath("links.in").ArraySize(); i++ {
+		objectID := data.GetByPath("links.in").ArrayElement(i).GetByPath("from").AsStringDefault("")
 
-	for _, key := range ctx.Domain.Cache().GetKeysByPattern(inPattern) {
-		split := strings.Split(key, ".")
-		if len(split) == 0 {
-			continue
-		}
-
-		objectID := split[len(split)-2]
-
-		linkBody, err := c.ObjectsLinkRead(objectID, ctx.Self.ID)
+		linkBody, err := db.CMDB.ObjectsLinkRead(objectID, ctx.Self.ID)
 		if err != nil {
 			continue
 		}

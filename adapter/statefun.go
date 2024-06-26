@@ -247,7 +247,7 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 	objectUUID := ctxProcessor.Self.ID
 
 	db := common.MustDBClient(ctxProcessor.Request)
-	data, err := db.Graph.VertexRead(objectUUID)
+	data, err := db.Graph.VertexRead(objectUUID, true)
 	if err != nil {
 		logger.Logln(logger.ErrorLevel, err.Error())
 		return

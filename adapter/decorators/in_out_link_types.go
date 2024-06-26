@@ -25,7 +25,7 @@ func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	db := common.MustDBClient(ctx.Request)
 	visited := make(map[string]struct{})
 
-	data, err := db.Graph.VertexRead(ctx.Self.ID)
+	data, err := db.Graph.VertexRead(ctx.Self.ID, true)
 	if err != nil {
 		logger.Logln(logger.ErrorLevel, err.Error())
 		return

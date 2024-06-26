@@ -3,10 +3,29 @@ package common
 import (
 	"fmt"
 
+	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/clients/go/db"
 	"github.com/foliagecp/sdk/embedded/graph/crud"
+	"github.com/foliagecp/sdk/statefun/logger"
 	"github.com/foliagecp/sdk/statefun/plugins"
+	sf "github.com/foliagecp/sdk/statefun/plugins"
 )
+
+func GetRemoteContext(ctx *sf.StatefunContextProcessor) *easyjson.JSON {
+	emptyData := easyjson.NewJSONObject().GetPtr()
+	db := MustDBClient(ctx.Request)
+
+	data, err := db.Graph.VertexRead(ctx.Self.ID, true)
+	if err != nil {
+		logger.Logln(logger.ErrorLevel, err.Error())
+		return emptyData
+	}
+	body := data.GetByPathPtr("body")
+	if body.IsNonEmptyObject() {
+		return data.GetByPathPtr("body")
+	}
+	return emptyData
+}
 
 func MustDBClient(request plugins.SFRequestFunc) db.DBSyncClient {
 	c, err := db.NewDBSyncClientFromRequestFunction(request)

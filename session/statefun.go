@@ -141,7 +141,7 @@ func SessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
 	payload := ctx.Payload
-	params := ctx.GetObjectContext()
+	params := common.GetRemoteContext(ctx)
 
 	if params.IsNonEmptyObject() {
 		response := easyjson.NewJSONObject()
@@ -184,7 +184,7 @@ func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 }
 
 func UpdateSessionActivity(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
-	params := ctx.GetObjectContext()
+	params := common.GetRemoteContext(ctx)
 	if !params.IsNonEmptyObject() {
 		return
 	}

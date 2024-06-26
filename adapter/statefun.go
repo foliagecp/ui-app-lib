@@ -106,7 +106,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 
 	sessionId := payload.GetByPath("session_id").AsStringDefault("")
 
-	body := ctx.GetObjectContext()
+	body := common.GetRemoteContext(ctx)
 	body.SetByPath(_CONTROLLER_DECLARATION, payload.GetByPath(_CONTROLLER_DECLARATION))
 	body.SetByPath("name", payload.GetByPath("name"))
 	body.SetByPath("plugin", payload.GetByPath("plugin"))
@@ -190,7 +190,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	controllerObjectID := ctx.Self.ID
 	slog.Info("Update controller object", "id", controllerObjectID)
 
-	body := ctx.GetObjectContext()
+	body := common.GetRemoteContext(ctx)
 	parentControllerID, ok := body.GetByPath("parent").AsString()
 	if !ok {
 		slog.Warn("empty controller id")
@@ -266,7 +266,7 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 
 func UpdateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
 	self := ctx.Self
-	body := ctx.GetObjectContext()
+	body := common.GetRemoteContext(ctx)
 	controllerPlugin, _ := body.GetByPath("plugin").AsString()
 
 	payload := ctx.Payload

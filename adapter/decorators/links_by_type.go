@@ -37,7 +37,7 @@ func linksByType(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	}
 
 	db := common.MustDBClient(ctx.Request)
-	data, err := db.Graph.VertexRead(ctx.Self.ID)
+	data, err := db.Graph.VertexRead(ctx.Self.ID, true)
 	if err != nil {
 		logger.Logln(logger.ErrorLevel, err.Error())
 		return

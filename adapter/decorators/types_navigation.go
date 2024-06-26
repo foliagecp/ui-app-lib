@@ -56,7 +56,7 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	currentObjectID := ctx.Self.ID
 	db := common.MustDBClient(ctx.Request)
 
-	data, err := db.Graph.VertexRead(currentObjectID)
+	data, err := db.Graph.VertexRead(currentObjectID, true)
 	if err != nil {
 		errResponse(ctx, "failed to read object")
 		return
@@ -232,7 +232,7 @@ func inOutTypes(ctx *sf.StatefunContextProcessor, id string) []string {
 	db := common.MustDBClient(ctx.Request)
 	list := []string{}
 
-	data, err := db.Graph.VertexRead(id)
+	data, err := db.Graph.VertexRead(id, true)
 	if err == nil {
 		for i := 0; i < data.GetByPath("links.in").ArraySize(); i++ {
 			objectID := data.GetByPath("links.in").ArrayElement(i).GetByPath("from").AsStringDefault("")

@@ -27,6 +27,11 @@ func GetRemoteContext(ctx *sf.StatefunContextProcessor) *easyjson.JSON {
 	return emptyData
 }
 
+func SetRemoteContext(ctx *sf.StatefunContextProcessor, body *easyjson.JSON) {
+	db := MustDBClient(ctx.Request)
+	db.Graph.VertexUpdate(ctx.Self.ID, *body, true, true)
+}
+
 func MustDBClient(request plugins.SFRequestFunc) db.DBSyncClient {
 	c, err := db.NewDBSyncClientFromRequestFunction(request)
 	if err != nil {

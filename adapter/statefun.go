@@ -229,7 +229,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	}
 
 	body.SetByPath("result", newResult)
-	ctx.SetObjectContext(body)
+	common.SetRemoteContext(ctx, body)
 
 	update := easyjson.NewJSONObject()
 	update.SetByPath("result", newResult)

@@ -192,7 +192,7 @@ func UpdateSessionActivity(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcess
 	now := time.Now().Unix()
 	params.SetByPath("updated_at", easyjson.NewJSON(now))
 
-	ctx.SetObjectContext(params)
+	common.SetRemoteContext(ctx, params)
 }
 
 func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {

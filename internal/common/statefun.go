@@ -8,8 +8,8 @@ import (
 	"github.com/foliagecp/sdk/statefun/plugins"
 )
 
-func MustCMDBClient(request plugins.SFRequestFunc) db.CMDBSyncClient {
-	c, err := db.NewCMDBSyncClientFromRequestFunction(request)
+func MustDBClient(request plugins.SFRequestFunc) db.DBSyncClient {
+	c, err := db.NewDBSyncClientFromRequestFunction(request)
 	if err != nil {
 		panic(err)
 	}

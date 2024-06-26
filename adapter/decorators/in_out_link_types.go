@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/foliagecp/easyjson"
+	"github.com/foliagecp/sdk/statefun/logger"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/ui-app-lib/internal/common"
 )
@@ -21,21 +22,20 @@ Request: {}
 	}
 */
 func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
-	c := common.MustCMDBClient(ctx.Request)
+	db := common.MustDBClient(ctx.Request)
 	visited := make(map[string]struct{})
 
-	in := make([]string, 0)
-	inPattern := common.InLinkKeyPattern(ctx.Self.ID, ">")
+	data, err := db.Graph.VertexRead(ctx.Self.ID)
+	if err != nil {
+		logger.Logln(logger.ErrorLevel, err.Error())
+		return
+	}
 
-	for _, key := range ctx.Domain.Cache().GetKeysByPattern(inPattern) {
-		split := strings.Split(key, ".")
-		if len(split) == 0 {
-			continue
-		}
+	in := []string{}
+	for i := 0; i < data.GetByPath("links.in").ArraySize(); i++ {
+		objectID := data.GetByPath("links.in").ArrayElement(i).GetByPath("from").AsStringDefault("")
 
-		objectID := split[len(split)-2]
-
-		linkBody, err := c.ObjectsLinkRead(objectID, ctx.Self.ID)
+		linkBody, err := db.CMDB.ObjectsLinkRead(objectID, ctx.Self.ID)
 		if err != nil {
 			continue
 		}
@@ -58,16 +58,9 @@ func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		in = append(in, linkType)
 	}
 
-	out := make([]string, 0)
-	outPattern := common.OutLinkType(ctx.Self.ID, ">")
-
-	for _, key := range ctx.Domain.Cache().GetKeysByPattern(outPattern) {
-		split := strings.Split(key, ".")
-		if len(split) == 0 {
-			continue
-		}
-
-		linkType := split[len(split)-2]
+	out := []string{}
+	for i := 0; i < data.GetByPath("links.out.names").ArraySize(); i++ {
+		linkType := data.GetByPath("links.out.types").ArrayElement(i).AsStringDefault("")
 
 		if !filterLinkType(linkType) {
 			continue

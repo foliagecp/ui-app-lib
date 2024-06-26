@@ -3,11 +3,11 @@ package adapter
 import (
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/clients/go/db"
 	"github.com/foliagecp/sdk/statefun"
+	"github.com/foliagecp/sdk/statefun/logger"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/sdk/statefun/system"
 	"github.com/foliagecp/ui-app-lib/adapter/decorators"
@@ -197,11 +197,13 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 		return
 	}
 
-	controllerBody, err := ctx.Domain.Cache().GetValueAsJSON(parentControllerID)
+	db := common.MustDBClient(ctx.Request)
+	data, err := db.CMDB.ObjectRead(parentControllerID)
 	if err != nil {
-		slog.Error(err.Error())
+		logger.Logln(logger.ErrorLevel, err.Error())
 		return
 	}
+	controllerBody := data.GetByPath("body")
 
 	controllerDeclaration := controllerBody.GetByPath(_CONTROLLER_DECLARATION)
 	realObjectID := body.GetByPath("object_id").AsStringDefault("")
@@ -243,16 +245,16 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 
 func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	objectUUID := ctxProcessor.Self.ID
-	pattern := common.InLinkKeyPattern(objectUUID, ">")
 
-	for _, v := range ctxProcessor.Domain.Cache().GetKeysByPattern(pattern) {
-		s := strings.Split(v, ".")
-		if len(s) == 0 {
-			continue
-		}
+	db := common.MustDBClient(ctxProcessor.Request)
+	data, err := db.Graph.VertexRead(objectUUID)
+	if err != nil {
+		logger.Logln(logger.ErrorLevel, err.Error())
+		return
+	}
 
-		controllerObjectID := s[len(s)-2]
-
+	for i := 0; i < data.GetByPath("links.in").ArraySize(); i++ {
+		controllerObjectID := data.GetByPath("links.in").ArrayElement(i).GetByPath("from").AsStringDefault("")
 		updatePayload := easyjson.NewJSONObject()
 		err := ctxProcessor.Signal(sfplugins.AutoSignalSelect,
 			inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &updatePayload, nil)

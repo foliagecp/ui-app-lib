@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"sort"
-	"strings"
 
 	"github.com/foliagecp/sdk/embedded/graph/crud"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
@@ -55,47 +54,36 @@ type routeObject struct {
 */
 func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	currentObjectID := ctx.Self.ID
-	cmdb := common.MustCMDBClient(ctx.Request)
+	db := common.MustDBClient(ctx.Request)
 
-	objectBody, err := cmdb.ObjectRead(currentObjectID)
+	data, err := db.Graph.VertexRead(currentObjectID)
 	if err != nil {
 		errResponse(ctx, "failed to read object")
 		return
 	}
 
-	objectType, ok := objectBody.GetByPath("type").AsString()
-	if !ok {
+	objectsOutLinks := map[string]string{}
+
+	objectType := ""
+	for i := 0; i < data.GetByPath("links.out.names").ArraySize(); i++ {
+		linkName := data.GetByPath("links.out.names").ArrayElement(i).AsStringDefault("")
+		toId := data.GetByPath("links.out.ids").ArrayElement(i).AsStringDefault("")
+		objectsOutLinks[toId] = linkName
+
+		tp := data.GetByPath("links.out.types").ArrayElement(i).AsStringDefault("")
+		if tp == crud.TO_TYPELINK {
+			objectType = toId
+		}
+	}
+	if len(objectType) == 0 {
 		errResponse(ctx, "missing object type")
 		return
 	}
 
-	objectsOutLinks := make(map[string]string)
-
-	for _, key := range ctx.Domain.Cache().GetKeysByPattern(common.OutLinkType(ctx.Self.ID, ">")) {
-		split := strings.Split(key, ".")
-		if len(split) == 0 {
-			continue
-		}
-
-		linkname, err := ctx.Domain.Cache().GetValue(key)
-		if err != nil {
-			continue
-		}
-
-		object := split[len(split)-1]
-		objectsOutLinks[object] = string(linkname)
-	}
-
-	for _, key := range ctx.Domain.Cache().GetKeysByPattern(common.InLinkKeyPattern(ctx.Self.ID, ">")) {
-		split := strings.Split(key, ".")
-		if len(split) == 0 {
-			continue
-		}
-
-		objectID := split[len(split)-2]
-		linkname := split[len(split)-1]
-
-		objectsOutLinks[objectID] = linkname
+	for i := 0; i < data.GetByPath("links.in").ArraySize(); i++ {
+		objectID := data.GetByPath("links.in").ArrayElement(i).GetByPath("from").AsStringDefault("")
+		linkName := data.GetByPath("links.in").ArrayElement(i).GetByPath("name").AsStringDefault("")
+		objectsOutLinks[objectID] = linkName
 	}
 
 	radius := int(ctx.Payload.GetByPath("radius").AsNumericDefault(1))
@@ -119,7 +107,7 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		current := stack[0]
 		stack = stack[1:]
 
-		typeBody, err := cmdb.TypeRead(current.ID)
+		typeBody, err := db.CMDB.TypeRead(current.ID)
 		if err != nil {
 			continue
 		}
@@ -175,7 +163,7 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		outTypes, _ := typeBody.GetByPath("to_types").AsArrayString()
 
 		for _, ioType := range inOutTypes(ctx, current.ID) {
-			tbody, err := cmdb.TypeRead(ioType)
+			tbody, err := db.CMDB.TypeRead(ioType)
 			if err != nil {
 				continue
 			}
@@ -241,46 +229,43 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 }
 
 func inOutTypes(ctx *sf.StatefunContextProcessor, id string) []string {
-	c := common.MustCMDBClient(ctx.Request)
-	list := make([]string, 0)
+	db := common.MustDBClient(ctx.Request)
+	list := []string{}
 
-	inPattern := common.InLinkKeyPattern(id, ">")
-	for _, key := range ctx.Domain.Cache().GetKeysByPattern(inPattern) {
-		split := strings.Split(key, ".")
-		if len(split) == 0 {
-			continue
+	data, err := db.Graph.VertexRead(id)
+	if err == nil {
+		for i := 0; i < data.GetByPath("links.in").ArraySize(); i++ {
+			objectID := data.GetByPath("links.in").ArrayElement(i).GetByPath("from").AsStringDefault("")
+
+			link, err := db.CMDB.TypesLinkRead(objectID, id)
+			if err != nil {
+				slog.Error(err.Error())
+				continue
+			}
+
+			if !link.GetByPath("body").IsNonEmptyObject() {
+				continue
+			}
+
+			linkType, _ := link.GetByPath("type").AsString()
+
+			if linkType != crud.TO_TYPELINK {
+				continue
+			}
+
+			list = append(list, objectID)
 		}
 
-		objectID := split[len(split)-2]
-
-		link, err := c.TypesLinkRead(objectID, id)
-		if err != nil {
-			slog.Error(err.Error())
-			continue
+		for i := 0; i < data.GetByPath("links.out.names").ArraySize(); i++ {
+			linkType := data.GetByPath("links.out.types").ArrayElement(i).AsStringDefault("")
+			if crud.TO_TYPELINK != linkType {
+				continue
+			}
+			toId := data.GetByPath("links.out.ids").ArrayElement(i).AsStringDefault("")
+			list = append(list, toId)
 		}
-
-		if !link.GetByPath("body").IsNonEmptyObject() {
-			continue
-		}
-
-		linkType, _ := link.GetByPath("type").AsString()
-
-		if linkType != crud.TO_TYPELINK {
-			continue
-		}
-
-		list = append(list, objectID)
-	}
-
-	outPattern := common.OutLinkType(id, crud.TO_TYPELINK, ">")
-
-	for _, key := range ctx.Domain.Cache().GetKeysByPattern(outPattern) {
-		split := strings.Split(key, ".")
-		if len(split) == 0 {
-			continue
-		}
-
-		list = append(list, split[len(split)-1])
+	} else {
+		errResponse(ctx, "failed to read object")
 	}
 
 	return list

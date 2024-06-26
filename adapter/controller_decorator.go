@@ -9,6 +9,7 @@ import (
 
 	"github.com/foliagecp/easyjson"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
+	"github.com/foliagecp/ui-app-lib/internal/common"
 	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 )
 
@@ -28,7 +29,7 @@ type controllerProperty struct {
 }
 
 func (c *controllerProperty) Decorate(ctx *sf.StatefunContextProcessor) easyjson.JSON {
-	return ctx.GetObjectContext().GetByPath(c.path)
+	return common.GetRemoteContext(ctx).GetByPath(c.path)
 }
 
 type controllerFunction struct {

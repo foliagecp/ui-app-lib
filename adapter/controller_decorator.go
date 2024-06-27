@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -60,7 +61,7 @@ func (c *controllerFunction) Decorate(ctx *sf.StatefunContextProcessor) easyjson
 			lt = c.args[0]
 		}
 
-		children := getChildrenUUIDSByLinkType(ctx, c.id, lt)
+		children := getChildrenUUIDSByLinkTypeRemote(ctx, c.id, lt)
 		return easyjson.JSONFromArray(children)
 	case "getInOutLinkTypes":
 		out := getInOutLinkTypes(ctx, c.id)
@@ -145,27 +146,47 @@ func extractFunctionAndArgs(s string) (string, []string, error) {
 	return funcName, funcArgs, nil
 }
 
-func getChildrenUUIDSByLinkType(ctx *sf.StatefunContextProcessor, id, filterLinkType string) []string {
-	payload := easyjson.NewJSONObject()
-	payload.SetByPath("link_type", easyjson.NewJSON(filterLinkType))
+func getChildrenUUIDSByLinkTypeRemote(ctx *sf.StatefunContextProcessor, id, filterLinkType string) []string {
+	result := []string{}
 
-	result, err := ctx.Request(sf.AutoRequestSelect, inStatefun.CHILDREN_LINK_TYPE_DECORATOR, id, &payload, nil)
+	db := common.MustDBClient(ctx.Request)
+
+	data, err := db.Graph.VertexRead(ctx.Self.ID, true)
 	if err != nil {
-		slog.Error(err.Error())
-		return []string{}
+		logger.Logln(logger.ErrorLevel, err.Error())
+		return result
 	}
 
-	if result.GetByPath("status").AsStringDefault("failed") == "failed" {
-		slog.Error(result.GetByPath("message").AsString())
-		return []string{}
+	for i := 0; i < data.GetByPath("links.out.names").ArraySize(); i++ {
+		tp := data.GetByPath("links.out.types").ArrayElement(i).AsStringDefault("")
+		toId := data.GetByPath("links.out.ids").ArrayElement(i).AsStringDefault("")
+		if tp == filterLinkType {
+			result = append(result, toId)
+		}
+	}
+	sort.Strings(result)
+
+	return result
+}
+
+func getChildrenUUIDSByLinkTypeLocal(ctx *sf.StatefunContextProcessor, id, filterLinkType string) []string {
+	result := []string{}
+	pattern := common.OutLinkType(ctx.Self.ID, filterLinkType, ">")
+	keys := ctx.Domain.Cache().GetKeysByPattern(pattern)
+
+	for _, key := range keys {
+		split := strings.Split(key, ".")
+		if len(split) == 0 {
+			continue
+		}
+
+		lastkey := split[len(split)-1]
+		result = append(result, lastkey)
 	}
 
-	var list []string
-	if err := json.Unmarshal(result.GetByPath("data").ToBytes(), &list); err != nil {
-		return []string{}
-	}
+	sort.Strings(result)
 
-	return list
+	return result
 }
 
 func getInOutLinkTypes(ctx *sf.StatefunContextProcessor, id string) []string {

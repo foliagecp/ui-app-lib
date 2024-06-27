@@ -3,11 +3,11 @@ package adapter
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/clients/go/db"
 	"github.com/foliagecp/sdk/statefun"
-	"github.com/foliagecp/sdk/statefun/logger"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/sdk/statefun/system"
 	"github.com/foliagecp/ui-app-lib/adapter/decorators"
@@ -106,7 +106,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 
 	sessionId := payload.GetByPath("session_id").AsStringDefault("")
 
-	body := common.GetRemoteContext(ctx)
+	body := ctx.GetObjectContext()
 	body.SetByPath(_CONTROLLER_DECLARATION, payload.GetByPath(_CONTROLLER_DECLARATION))
 	body.SetByPath("name", payload.GetByPath("name"))
 	body.SetByPath("plugin", payload.GetByPath("plugin"))
@@ -190,20 +190,18 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	controllerObjectID := ctx.Self.ID
 	slog.Info("Update controller object", "id", controllerObjectID)
 
-	body := common.GetRemoteContext(ctx)
+	body := ctx.GetObjectContext()
 	parentControllerID, ok := body.GetByPath("parent").AsString()
 	if !ok {
 		slog.Warn("empty controller id")
 		return
 	}
 
-	db := common.MustDBClient(ctx.Request)
-	data, err := db.CMDB.ObjectRead(parentControllerID)
+	controllerBody, err := ctx.Domain.Cache().GetValueAsJSON(parentControllerID)
 	if err != nil {
-		logger.Logln(logger.ErrorLevel, err.Error())
+		slog.Error(err.Error())
 		return
 	}
-	controllerBody := data.GetByPath("body")
 
 	controllerDeclaration := controllerBody.GetByPath(_CONTROLLER_DECLARATION)
 	realObjectID := body.GetByPath("object_id").AsStringDefault("")
@@ -229,7 +227,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	}
 
 	body.SetByPath("result", newResult)
-	common.SetRemoteContext(ctx, body)
+	ctx.SetObjectContext(body)
 
 	update := easyjson.NewJSONObject()
 	update.SetByPath("result", newResult)
@@ -245,16 +243,16 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 
 func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	objectUUID := ctxProcessor.Self.ID
+	pattern := common.InLinkKeyPattern(objectUUID, ">")
 
-	db := common.MustDBClient(ctxProcessor.Request)
-	data, err := db.Graph.VertexRead(objectUUID, true)
-	if err != nil {
-		logger.Logln(logger.ErrorLevel, err.Error())
-		return
-	}
+	for _, v := range ctxProcessor.Domain.Cache().GetKeysByPattern(pattern) {
+		s := strings.Split(v, ".")
+		if len(s) == 0 {
+			continue
+		}
 
-	for i := 0; i < data.GetByPath("links.in").ArraySize(); i++ {
-		controllerObjectID := data.GetByPath("links.in").ArrayElement(i).GetByPath("from").AsStringDefault("")
+		controllerObjectID := s[len(s)-2]
+
 		updatePayload := easyjson.NewJSONObject()
 		err := ctxProcessor.Signal(sfplugins.AutoSignalSelect,
 			inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &updatePayload, nil)
@@ -266,7 +264,7 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 
 func UpdateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
 	self := ctx.Self
-	body := common.GetRemoteContext(ctx)
+	body := ctx.GetObjectContext()
 	controllerPlugin, _ := body.GetByPath("plugin").AsString()
 
 	payload := ctx.Payload

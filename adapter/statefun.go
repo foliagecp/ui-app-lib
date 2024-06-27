@@ -228,17 +228,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	body.SetByPath("result", newResult)
 	ctx.SetObjectContext(body)
 
-	update := easyjson.NewJSONObject()
-	update.SetByPath("result", newResult)
-	update.SetByPath("object_id", easyjson.NewJSON(realObjectID))
-	if len(forceUpdateSessionId) > 0 {
-		update.SetByPath("force_update_session_id", easyjson.NewJSON(forceUpdateSessionId))
-	}
-
-	slog.Info("Send update upstream to controller", "id", parentControllerID)
-
 	// send update to controller subs -----------------------------------------
-
 	controllerPlugin, _ := controllerBody.GetByPath("plugin").AsString()
 
 	path := fmt.Sprintf("payload.plugins.%s.%s", controllerPlugin, realObjectID)

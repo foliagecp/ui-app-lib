@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/foliagecp/easyjson"
+	"github.com/foliagecp/sdk/statefun/logger"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/ui-app-lib/internal/common"
 	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
@@ -29,7 +30,20 @@ type controllerProperty struct {
 }
 
 func (c *controllerProperty) Decorate(ctx *sf.StatefunContextProcessor) easyjson.JSON {
-	return common.GetRemoteContext(ctx).GetByPath(c.path)
+	body := easyjson.NewJSONObject().GetPtr()
+	db := common.MustDBClient(ctx.Request)
+
+	data, err := db.Graph.VertexRead(ctx.Self.ID, false)
+	if err != nil {
+		logger.Logln(logger.ErrorLevel, err.Error())
+	} else {
+		b := data.GetByPathPtr("body")
+		if b.IsNonEmptyObject() {
+			body = b
+		}
+	}
+
+	return body.GetByPath(c.path)
 }
 
 type controllerFunction struct {

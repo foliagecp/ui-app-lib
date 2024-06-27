@@ -12,7 +12,6 @@ import (
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/sdk/statefun/test"
 	"github.com/foliagecp/ui-app-lib/adapter"
-	"github.com/foliagecp/ui-app-lib/adapter/decorators"
 	"github.com/foliagecp/ui-app-lib/internal/generate"
 	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 	"github.com/foliagecp/ui-app-lib/session"
@@ -51,7 +50,6 @@ func (s *adapterTestSuite) Test_StartController_Correct() {
 	// register related statefun
 	crud.RegisterAllFunctionTypes(s.Runtime())
 	session.RegisterFunctions(s.Runtime())
-	s.RegisterFunction(inStatefun.CONTROLLER_UPDATE, adapter.UpdateController, *statefun.NewFunctionTypeConfig())
 	s.RegisterFunction(inStatefun.CONTROLLER_OBJECT_TRIGGER, adapter.UpdateControllerObject, *statefun.NewFunctionTypeConfig())
 	s.OnAfterStartFunction(adapter.InitSchema, true)
 	// -------------------------
@@ -143,60 +141,6 @@ func (s *adapterTestSuite) Test_ControllerObjectTrigger_Correct() {
 	cmdb.ObjectUpdate("uuid_1", easyjson.NewJSONObjectWithKeyValue("key", easyjson.NewJSON("value")), true)
 
 	time.Sleep(1 * time.Second)
-}
-
-func (s *adapterTestSuite) Test_UpdateController_Correct() {
-	typename := inStatefun.CONTROLLER_UPDATE
-
-	crud.RegisterAllFunctionTypes(s.Runtime())
-	session.RegisterFunctions(s.Runtime())
-	decorators.Register(s.Runtime())
-
-	s.OnAfterStartFunction(adapter.InitSchema, true)
-
-	s.RegisterFunction(typename, adapter.UpdateController, *statefun.NewFunctionTypeConfig())
-
-	err := s.StartRuntime()
-	s.Require().NoError(err)
-
-	cmdb, err := db.NewCMDBSyncClientFromRequestFunction(s.Request)
-	s.Require().NoError(err)
-
-	controllerName := "test_controller"
-	controllerID := generate.UUID(controllerName).String()
-
-	controllerBody := easyjson.NewJSONObject()
-	controllerBody.SetByPath("name", easyjson.NewJSON(controllerName))
-	controllerBody.SetByPath("plugin", easyjson.NewJSON("viewer"))
-
-	err = cmdb.ObjectCreate(controllerID, inStatefun.CONTROLLER_TYPE, controllerBody)
-	s.Require().NoError(err)
-
-	clientID := "1"
-	sessionID := generate.SessionID("1").String()
-	sessionBody := easyjson.NewJSONObjectWithKeyValue("client_id", easyjson.NewJSON(clientID))
-
-	err = cmdb.ObjectCreate(sessionID, inStatefun.SESSION_TYPE, sessionBody)
-	s.Require().NoError(err)
-
-	err = cmdb.ObjectsLinkCreate(controllerID, sessionID, "sub", []string{})
-	s.Require().NoError(err)
-
-	payload := easyjson.NewJSONObject()
-	payload.SetByPath("object_id", easyjson.NewJSON("uuid_1"))
-	payload.SetByPath("result", easyjson.NewJSON("some_result"))
-
-	sub, err := s.SubscribeEgress(inStatefun.EGRESS, clientID)
-	s.Require().NoError(err)
-
-	err = s.Signal(sfplugins.AutoSignalSelect, typename, controllerID, &payload, nil)
-	s.Require().NoError(err)
-
-	msg, err := sub.NextMsg(2 * time.Second)
-	s.Require().NoError(err)
-
-	wantPayload := `{"payload":{"plugins":{"viewer":{"uuid_1":"some_result"}}}}`
-	s.JSONEq(wantPayload, string(msg.Data))
 }
 
 func (s *adapterTestSuite) Test_ConstructController_Correct() {

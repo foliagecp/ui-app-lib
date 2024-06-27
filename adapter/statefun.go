@@ -30,7 +30,6 @@ func RegisterFunctions(runtime *statefun.Runtime) {
 	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_UPDATE, UpdateControllerObject, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_TRIGGER, ControllerObjectTrigger, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CONSTRUCT, ControllerConstruct, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetAllowedRequestProviders(sfplugins.AutoRequestSelect))
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_UPDATE, UpdateController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetMsgAckWaitMs(30000))
 
 	decorators.Register(runtime)
 
@@ -237,8 +236,32 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	}
 
 	slog.Info("Send update upstream to controller", "id", parentControllerID)
-	// send update to controller subs
-	ctx.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_UPDATE, parentControllerID, &update, nil)
+
+	// send update to controller subs -----------------------------------------
+
+	controllerPlugin, _ := controllerBody.GetByPath("plugin").AsString()
+
+	path := fmt.Sprintf("payload.plugins.%s.%s", controllerPlugin, realObjectID)
+
+	updateReply := easyjson.NewJSONObject()
+	updateReply.SetByPath(path, newResult)
+
+	subscribers := getChildrenUUIDSByLinkTypeLocal(ctx, parentControllerID, inStatefun.SUBSCRIBER_TYPE)
+
+	if len(forceUpdateSessionId) == 0 {
+		slog.Info("Send update to subscribers", "subscribers", subscribers)
+		for _, subID := range subscribers {
+			if err := egress.SendToSessionEgress(ctx, subID, &updateReply); err != nil {
+				slog.Warn(err.Error())
+			}
+		}
+	} else {
+		slog.Info("Send update to force update requested session only", "subscribers", subscribers)
+		if err := egress.SendToSessionEgress(ctx, forceUpdateSessionId, &updateReply); err != nil {
+			slog.Warn(err.Error())
+		}
+	}
+	// ------------------------------------------------------------------------
 }
 
 func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
@@ -277,17 +300,17 @@ func UpdateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunConte
 	updateReply := easyjson.NewJSONObject()
 	updateReply.SetByPath(path, update)
 
-	subscribers := getChildrenUUIDSByLinkType(ctx, self.ID, inStatefun.SUBSCRIBER_TYPE)
-
-	slog.Info("Send update to subscribers", "subscribers", subscribers)
+	subscribers := getChildrenUUIDSByLinkTypeLocal(ctx, self.ID, inStatefun.SUBSCRIBER_TYPE)
 
 	if len(forceUpdateSessionId) == 0 {
+		slog.Info("Send update to subscribers", "subscribers", subscribers)
 		for _, subID := range subscribers {
 			if err := egress.SendToSessionEgress(ctx, subID, &updateReply); err != nil {
 				slog.Warn(err.Error())
 			}
 		}
 	} else {
+		slog.Info("Send update to force update requested session only", "subscribers", subscribers)
 		if err := egress.SendToSessionEgress(ctx, forceUpdateSessionId, &updateReply); err != nil {
 			slog.Warn(err.Error())
 		}

@@ -6,7 +6,6 @@ import (
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/clients/go/db"
 	"github.com/foliagecp/sdk/embedded/graph/crud"
-	"github.com/foliagecp/sdk/statefun"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/sdk/statefun/test"
 	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
@@ -25,9 +24,6 @@ func (s *childrenByLinkTypeTestSuite) Test() {
 	typename := inStatefun.CHILDREN_LINK_TYPE_DECORATOR
 
 	crud.RegisterAllFunctionTypes(s.Runtime())
-
-	cfg := *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sf.AutoRequestSelect)
-	s.RegisterFunction(typename, childrenUUIDsByLinkType, cfg)
 
 	err := s.StartRuntime()
 	s.Require().NoError(err)

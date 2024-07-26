@@ -82,11 +82,11 @@ Payload:
 */
 func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	if ctx.Caller.Typename == ctx.Self.Typename {
-		id := ctx.Self.ID
+		id := ctx.Caller.ID
 		payload := ctx.Payload
 		sessionID := ctx.Domain.CreateObjectIDWithHubDomain(generate.SessionID(id).String(), false)
 
-		slog.Info("Receive msg", "from", id, "id", sessionID)
+		slog.Info("Receive msg", "from", id, "session_id", sessionID)
 
 		payload.SetByPath("client_id", easyjson.NewJSON(id))
 

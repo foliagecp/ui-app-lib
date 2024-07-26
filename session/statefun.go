@@ -17,6 +17,10 @@ import (
 	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 )
 
+var (
+	weakClustering bool = false
+)
+
 func RegisterFunctions(runtime *statefun.Runtime) {
 	statefun.NewFunctionType(runtime, inStatefun.INGRESS, Ingress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.SESSION_ROUTER, SessionRouter, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
@@ -90,6 +94,10 @@ func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			slog.Warn(err.Error())
 		}
 	} else { // Routing into ingresses of all weak cluster domains
+		domains := ctx.Domain.GetWeakClusterDomains()
+		if len(domains) > 1 {
+			weakClustering = true
+		}
 		for _, domain := range ctx.Domain.GetWeakClusterDomains() {
 			objectIdForRoutingDomain := ctx.Domain.CreateObjectIDWithDomain(domain, ctx.Self.ID, true)
 			ctx.Signal(sf.AutoSignalSelect, ctx.Self.Typename, objectIdForRoutingDomain, ctx.Payload, ctx.Options)
@@ -261,6 +269,11 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		for name, controller := range controllers {
 			if len(controller.UUIDs) == 0 {
 				continue
+			}
+			if weakClustering {
+				if ctx.Domain.GetDomainFromObjectID(controller.UUIDs[0]) != ctx.Domain.Name() {
+					continue
+				}
 			}
 
 			body := easyjson.NewJSON(controller.Body)

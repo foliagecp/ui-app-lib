@@ -77,16 +77,23 @@ Payload:
 	}
 */
 func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
-	id := ctx.Self.ID
-	payload := ctx.Payload
-	sessionID := ctx.Domain.CreateObjectIDWithHubDomain(generate.SessionID(id).String(), false)
+	if ctx.Caller.Typename == ctx.Self.Typename {
+		id := ctx.Self.ID
+		payload := ctx.Payload
+		sessionID := ctx.Domain.CreateObjectIDWithHubDomain(generate.SessionID(id).String(), false)
 
-	slog.Info("Receive msg", "from", id, "session_id", sessionID)
+		slog.Info("Receive msg", "from", id, "id", sessionID)
 
-	payload.SetByPath("client_id", easyjson.NewJSON(id))
+		payload.SetByPath("client_id", easyjson.NewJSON(id))
 
-	if err := ctx.Signal(sf.AutoSignalSelect, inStatefun.SESSION_ROUTER, sessionID, payload, nil); err != nil {
-		slog.Warn(err.Error())
+		if err := ctx.Signal(sf.AutoSignalSelect, inStatefun.SESSION_ROUTER, sessionID, payload, nil); err != nil {
+			slog.Warn(err.Error())
+		}
+	} else { // Routing into ingresses of all weak cluster domains
+		for _, domain := range ctx.Domain.GetWeakClusterDomains() {
+			objectIdForRoutingDomain := ctx.Domain.CreateObjectIDWithDomain(domain, ctx.Self.ID, true)
+			ctx.Signal(sf.AutoSignalSelect, ctx.Self.Typename, objectIdForRoutingDomain, ctx.Payload, ctx.Options)
+		}
 	}
 }
 

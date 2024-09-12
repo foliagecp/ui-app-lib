@@ -159,7 +159,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 			}
 		}
 
-		if err := cmdb.ObjectsLinkCreate(controllerObjectID, objectUUID, objectUUID, []string{}); err != nil {
+		if err := cmdb.ObjectsLinkCreate(controllerObjectID, objectUUID, "uiapplib_"+objectUUID, []string{}); err != nil {
 			if !common.ErrorAlreadyExists(err) {
 				slog.Warn("failed to create objects link between controller object and uuid", "err", err.Error())
 				continue
@@ -174,6 +174,8 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 		}
 
 		cmdb.TriggerObjectSet(objectType, db.UpdateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+		cmdb.TriggerObjectSet(objectType, db.CreateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+		cmdb.TriggerObjectSet(objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
 
 		// send to update сontroller object
 		payload := easyjson.NewJSONObjectWithKeyValue("force_update_session_id", easyjson.NewJSON(sessionId))
@@ -257,6 +259,8 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	objectUUID := ctxProcessor.Self.ID
 	pattern := common.InLinkKeyPattern(objectUUID, ">")
+
+	fmt.Printf("           ControllerObjectTrigger on object %s\n         data: %s\n", objectUUID, ctxProcessor.Payload.ToString())
 
 	for _, v := range ctxProcessor.Domain.Cache().GetKeysByPattern(pattern) {
 		s := strings.Split(v, ".")

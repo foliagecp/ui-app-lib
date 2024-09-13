@@ -151,7 +151,7 @@ func getChildrenUUIDSByLinkTypeRemote(ctx *sf.StatefunContextProcessor, id, filt
 
 	db := common.MustDBClient(ctx.Request)
 
-	data, err := db.Graph.VertexRead(ctx.Self.ID, true)
+	data, err := db.Graph.VertexRead(id, true)
 	if err != nil {
 		logger.Logln(logger.ErrorLevel, err.Error())
 		return result
@@ -171,7 +171,7 @@ func getChildrenUUIDSByLinkTypeRemote(ctx *sf.StatefunContextProcessor, id, filt
 
 func getChildrenUUIDSByLinkTypeLocal(ctx *sf.StatefunContextProcessor, id, filterLinkType string) []string {
 	result := []string{}
-	pattern := common.OutLinkType(ctx.Self.ID, filterLinkType, ">")
+	pattern := common.OutLinkType(id, filterLinkType, ">")
 	keys := ctx.Domain.Cache().GetKeysByPattern(pattern)
 
 	for _, key := range keys {

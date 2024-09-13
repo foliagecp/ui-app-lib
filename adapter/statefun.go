@@ -287,10 +287,12 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 			fromId := linkData.GetByPath("from").AsStringDefault("")
 			linkName := linkData.GetByPath("name").AsStringDefault("")
 			if strings.Contains(linkName, "uiapplib_") {
-				if ctxProcessor.Payload.PathExists("trigger.object.delete") {
-					fmt.Printf("          >> ControllerObjectTrigger NOT DELETE on object %s on controller object %s\n", objectUUID, fromId)
-					cmdb.ObjectDelete(fromId)
-					continue
+				if ctxProcessor.Payload.PathExists("trigger.link.delete") {
+					if fromId == inStatefun.CONTROLLER_OBJECT_TYPE { // This object has link from CONTROLLER_OBJECT_TYPE thus it is object controller
+						fmt.Printf("          >> ControllerObjectTrigger DELETING object controller %s\n", objectUUID)
+						cmdb.ObjectDelete(objectUUID)
+						break
+					}
 				}
 				updatePayload := easyjson.NewJSONObject()
 

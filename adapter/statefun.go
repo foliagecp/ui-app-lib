@@ -131,6 +131,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 	}
 
 	uuids, _ := payload.GetByPath("uuids").AsArrayString()
+	typesTriggersCreated := map[string]struct{}{}
 	for _, objectUUID := range uuids {
 		controllerObjectID := generate.UUID(self.ID + objectUUID).String()
 		controllerObjectBody := easyjson.NewJSONObject()
@@ -173,9 +174,24 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 			}
 		}
 
-		cmdb.TriggerObjectSet(objectType, db.UpdateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
-		cmdb.TriggerObjectSet(objectType, db.CreateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
-		cmdb.TriggerObjectSet(objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+		if _, ok := typesTriggersCreated[objectType]; !ok {
+			cmdb.TriggerObjectSet(objectType, db.UpdateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+			cmdb.TriggerObjectSet(objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+
+			if typeData, err := cmdb.TypeRead(objectType); err == nil {
+				linksIn := typeData.GetByPath("links.in")
+				for i := 0; i < linksIn.ArraySize(); i++ {
+					linkData := typeData.GetByPath("links.in").ArrayElement(i)
+					if linkData.GetByPath("name").AsStringDefault("") == objectType { // link from other type
+						fromType := linkData.GetByPath("from").AsStringDefault("")
+						cmdb.TriggerLinkSet(fromType, objectType, db.CreateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+						cmdb.TriggerLinkSet(fromType, objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+					}
+				}
+			}
+
+			typesTriggersCreated[objectType] = struct{}{}
+		}
 
 		// send to update сontroller object
 		payload := easyjson.NewJSONObjectWithKeyValue("force_update_session_id", easyjson.NewJSON(sessionId))
@@ -258,23 +274,29 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 
 func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	objectUUID := ctxProcessor.Self.ID
-	pattern := common.InLinkKeyPattern(objectUUID, ">")
-
 	fmt.Printf("           ControllerObjectTrigger on object %s\n         data: %s\n", objectUUID, ctxProcessor.Payload.ToString())
 
-	for _, v := range ctxProcessor.Domain.Cache().GetKeysByPattern(pattern) {
-		s := strings.Split(v, ".")
-		if len(s) == 0 {
-			continue
-		}
+	cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctxProcessor.Request)
+	if objData, err := cmdb.ObjectRead(objectUUID); err == nil {
+		linksIn := objData.GetByPath("links.in")
+		for i := 0; i < linksIn.ArraySize(); i++ {
+			linkData := objData.GetByPath("links.in").ArrayElement(i)
+			fromId := linkData.GetByPath("from").AsStringDefault("")
+			linkName := linkData.GetByPath("name").AsStringDefault("")
+			if strings.Contains(linkName, "uiapplib_") {
+				if ctxProcessor.Payload.PathExists("trigger.object.delete") {
+					fmt.Printf("          >> ControllerObjectTrigger NOT DELETE on object %s on controller object %s\n", objectUUID, fromId)
+					cmdb.ObjectDelete(fromId)
+					continue
+				}
+				updatePayload := easyjson.NewJSONObject()
 
-		controllerObjectID := s[len(s)-2]
-
-		updatePayload := easyjson.NewJSONObject()
-		err := ctxProcessor.Signal(sfplugins.AutoSignalSelect,
-			inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &updatePayload, nil)
-		if err != nil {
-			slog.Warn(err.Error())
+				fmt.Printf("          >> ControllerObjectTrigger NOT DELETE on object %s on controller object %s\n", objectUUID, fromId)
+				err := ctxProcessor.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, fromId, &updatePayload, nil)
+				if err != nil {
+					slog.Warn(err.Error())
+				}
+			}
 		}
 	}
 }

@@ -324,7 +324,7 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 				// Need grouping for same controller object at some time window.
 				// Otherwise object controller for object like network switch can start updating every time its port disappears
 				controllerObjectOnTriggerWindowUpdaterTasksMutex.Lock()
-				controllerObjectOnTriggerWindowUpdaterTasks[objectUUID] = &updatePayload
+				controllerObjectOnTriggerWindowUpdaterTasks[fromId] = &updatePayload
 				controllerObjectOnTriggerWindowUpdaterTasksMutex.Unlock()
 			}
 		}

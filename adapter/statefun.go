@@ -21,10 +21,11 @@ import (
 )
 
 var (
-	checkUpdates                                        = system.GetEnvMustProceed("UI_APP_LIB_CHECK_UPDATES", true)
-	controllerObjectOnTriggerWindowUpdaterTasks         = map[string]*easyjson.JSON{}
-	controllerObjectOnTriggerWindowUpdaterWindowTimeout = 2 * time.Second
-	controllerObjectOnTriggerWindowUpdaterTasksMutex    sync.Mutex
+	checkUpdates                                              = system.GetEnvMustProceed("UI_APP_LIB_CHECK_UPDATES", true)
+	controllerObjectOnTriggerWindowUpdaterTasks               = map[string]*easyjson.JSON{}
+	controllerObjectOnTriggerWindowUpdaterWindowTimeout       = 2 * time.Second
+	controllerObjectOnTriggerWindowUpdaterWindowStartNs int64 = 0
+	controllerObjectOnTriggerWindowUpdaterMutex         sync.Mutex
 )
 
 const (
@@ -34,17 +35,22 @@ const (
 
 func controllerObjectOnTriggerWindowUpdater(runtime *statefun.Runtime) {
 	for {
-		time.Sleep(controllerObjectOnTriggerWindowUpdaterWindowTimeout)
+		time.Sleep(1 * time.Second)
 
-		controllerObjectOnTriggerWindowUpdaterTasksMutex.Lock()
-		for objectUUI, updatePayload := range controllerObjectOnTriggerWindowUpdaterTasks {
-			err := runtime.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, objectUUI, updatePayload, nil)
-			if err != nil {
-				slog.Warn(err.Error())
+		controllerObjectOnTriggerWindowUpdaterMutex.Lock()
+		if controllerObjectOnTriggerWindowUpdaterWindowStartNs > 0 {
+			if controllerObjectOnTriggerWindowUpdaterWindowStartNs+int64(controllerObjectOnTriggerWindowUpdaterWindowTimeout) < system.GetCurrentTimeNs() {
+				for objectUUI, updatePayload := range controllerObjectOnTriggerWindowUpdaterTasks {
+					err := runtime.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, objectUUI, updatePayload, nil)
+					if err != nil {
+						slog.Warn(err.Error())
+					}
+				}
+				clear(controllerObjectOnTriggerWindowUpdaterTasks)
+				controllerObjectOnTriggerWindowUpdaterWindowStartNs = 0
 			}
 		}
-		clear(controllerObjectOnTriggerWindowUpdaterTasks)
-		controllerObjectOnTriggerWindowUpdaterTasksMutex.Unlock()
+		controllerObjectOnTriggerWindowUpdaterMutex.Unlock()
 	}
 }
 
@@ -323,9 +329,12 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 				fmt.Printf("          >> ControllerObjectTrigger on object %s calls CONTROLLER_OBJECT_UPDATE on object controller %s\n", objectUUID, fromId)
 				// Need grouping for same controller object at some time window.
 				// Otherwise object controller for object like network switch can start updating every time its port disappears
-				controllerObjectOnTriggerWindowUpdaterTasksMutex.Lock()
+				controllerObjectOnTriggerWindowUpdaterMutex.Lock()
+				if controllerObjectOnTriggerWindowUpdaterWindowStartNs == 0 {
+					controllerObjectOnTriggerWindowUpdaterWindowStartNs = system.GetCurrentTimeNs()
+				}
 				controllerObjectOnTriggerWindowUpdaterTasks[fromId] = &updatePayload
-				controllerObjectOnTriggerWindowUpdaterTasksMutex.Unlock()
+				controllerObjectOnTriggerWindowUpdaterMutex.Unlock()
 			}
 		}
 	}

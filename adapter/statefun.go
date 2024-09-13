@@ -7,6 +7,7 @@ import (
 
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/clients/go/db"
+	"github.com/foliagecp/sdk/embedded/graph/crud"
 	"github.com/foliagecp/sdk/statefun"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/sdk/statefun/system"
@@ -183,9 +184,11 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 				for i := 0; i < linksIn.ArraySize(); i++ {
 					linkData := typeData.GetByPath("links.in").ArrayElement(i)
 					if linkData.GetByPath("name").AsStringDefault("") == objectType { // link from other type
-						fromType := linkData.GetByPath("from").AsStringDefault("")
-						cmdb.TriggerLinkSet(fromType, objectType, db.CreateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
-						cmdb.TriggerLinkSet(fromType, objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+						fromId := linkData.GetByPath("from").AsStringDefault("")
+						if len(fromId) > 0 && ctx.Domain.GetObjectIDWithoutDomain(fromId) != crud.BUILT_IN_TYPES {
+							cmdb.TriggerLinkSet(fromId, objectType, db.CreateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+							cmdb.TriggerLinkSet(fromId, objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+						}
 					}
 				}
 			}

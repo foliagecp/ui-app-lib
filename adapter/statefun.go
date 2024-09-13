@@ -280,6 +280,12 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 	fmt.Printf("           ControllerObjectTrigger on object %s\n         data: %s\n", objectUUID, ctxProcessor.Payload.ToString())
 
 	cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctxProcessor.Request)
+	if ctxProcessor.Payload.GetByPath("trigger.link.delete.type").AsStringDefault("") == inStatefun.CONTROLLER_OBJECT_TYPE {
+		fmt.Printf("          >> ControllerObjectTrigger DELETING object controller %s\n", objectUUID)
+		cmdb.ObjectDelete(objectUUID)
+		return
+	}
+
 	if objData, err := cmdb.ObjectRead(objectUUID); err == nil {
 		linksIn := objData.GetByPath("links.in")
 		for i := 0; i < linksIn.ArraySize(); i++ {
@@ -287,13 +293,6 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 			fromId := linkData.GetByPath("from").AsStringDefault("")
 			linkName := linkData.GetByPath("name").AsStringDefault("")
 			if strings.Contains(linkName, "uiapplib_") {
-				if ctxProcessor.Payload.PathExists("trigger.link.delete") {
-					if fromId == inStatefun.CONTROLLER_OBJECT_TYPE { // This object has link from CONTROLLER_OBJECT_TYPE thus it is object controller
-						fmt.Printf("          >> ControllerObjectTrigger DELETING object controller %s\n", objectUUID)
-						cmdb.ObjectDelete(objectUUID)
-						break
-					}
-				}
 				updatePayload := easyjson.NewJSONObject()
 
 				fmt.Printf("          >> ControllerObjectTrigger NOT DELETE on object %s on controller object %s\n", objectUUID, fromId)

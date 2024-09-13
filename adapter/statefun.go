@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/clients/go/db"
@@ -18,12 +20,33 @@ import (
 	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 )
 
-var checkUpdates = system.GetEnvMustProceed("UI_APP_LIB_CHECK_UPDATES", true)
+var (
+	checkUpdates                                        = system.GetEnvMustProceed("UI_APP_LIB_CHECK_UPDATES", true)
+	controllerObjectOnTriggerWindowUpdaterTasks         = map[string]*easyjson.JSON{}
+	controllerObjectOnTriggerWindowUpdaterWindowTimeout = 2 * time.Second
+	controllerObjectOnTriggerWindowUpdaterTasksMutex    sync.Mutex
+)
 
 const (
 	_CONTROLLER_DECLARATION = "declaration"
 	_CONTROLLER_RESULT      = "result"
 )
+
+func controllerObjectOnTriggerWindowUpdater(runtime *statefun.Runtime) {
+	for {
+		time.Sleep(controllerObjectOnTriggerWindowUpdaterWindowTimeout)
+
+		controllerObjectOnTriggerWindowUpdaterTasksMutex.Lock()
+		for objectUUI, updatePayload := range controllerObjectOnTriggerWindowUpdaterTasks {
+			err := runtime.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, objectUUI, updatePayload, nil)
+			if err != nil {
+				slog.Warn(err.Error())
+			}
+		}
+		clear(controllerObjectOnTriggerWindowUpdaterTasks)
+		controllerObjectOnTriggerWindowUpdaterTasksMutex.Unlock()
+	}
+}
 
 func RegisterFunctions(runtime *statefun.Runtime) {
 	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_START, StartController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
@@ -35,6 +58,8 @@ func RegisterFunctions(runtime *statefun.Runtime) {
 	decorators.Register(runtime)
 
 	runtime.RegisterOnAfterStartFunction(InitSchema, false)
+
+	go controllerObjectOnTriggerWindowUpdater(runtime)
 }
 
 func InitSchema(runtime *statefun.Runtime) error {
@@ -295,11 +320,12 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 			if strings.Contains(linkName, "uiapplib_") {
 				updatePayload := easyjson.NewJSONObject()
 
-				fmt.Printf("          >> ControllerObjectTrigger NOT DELETE on object %s on controller object %s\n", objectUUID, fromId)
-				err := ctxProcessor.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, fromId, &updatePayload, nil)
-				if err != nil {
-					slog.Warn(err.Error())
-				}
+				fmt.Printf("          >> ControllerObjectTrigger on object %s calls CONTROLLER_OBJECT_UPDATE on object controller %s\n", objectUUID, fromId)
+				// Need grouping for same controller object at some time window.
+				// Otherwise object controller for object like network switch can start updating every time its port disappears
+				controllerObjectOnTriggerWindowUpdaterTasksMutex.Lock()
+				controllerObjectOnTriggerWindowUpdaterTasks[objectUUID] = &updatePayload
+				controllerObjectOnTriggerWindowUpdaterTasksMutex.Unlock()
 			}
 		}
 	}

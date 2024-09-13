@@ -280,7 +280,7 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 	fmt.Printf("           ControllerObjectTrigger on object %s\n         data: %s\n", objectUUID, ctxProcessor.Payload.ToString())
 
 	cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctxProcessor.Request)
-	if ctxProcessor.Payload.GetByPath("trigger.link.delete.type").AsStringDefault("") == inStatefun.CONTROLLER_OBJECT_TYPE {
+	if ctxProcessor.Payload.GetByPath("trigger.link.delete.type").AsStringDefault("") == inStatefun.CONTROLLER_SUBJECT_TYPE {
 		fmt.Printf("          >> ControllerObjectTrigger DELETING object controller %s\n", objectUUID)
 		cmdb.ObjectDelete(objectUUID)
 		return

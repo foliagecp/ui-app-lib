@@ -145,15 +145,80 @@ func parseDecorators(objectID string, payload *easyjson.JSON) map[string]control
 }
 
 func extractFunctionAndArgs(s string) (string, []string, error) {
-	split := strings.Split(strings.TrimRight(s, ")"), "(")
-	if len(split) != 2 {
-		return "", nil, fmt.Errorf("@function: invalid function format: %s", s)
+	// Убираем пробелы в начале/конце и проверяем наличие скобок
+	s = strings.TrimSpace(s)
+	if len(s) == 0 || s[len(s)-1] != ')' {
+		return "", nil, fmt.Errorf("invalid function format: %s", s)
 	}
 
-	funcName := split[0]
-	funcArgs := strings.Split(strings.TrimSpace(split[1]), ",")
+	// Ищем открывающую скобку
+	openParenIndex := strings.Index(s, "(")
+	if openParenIndex == -1 {
+		return "", nil, fmt.Errorf("invalid function format: %s", s)
+	}
 
-	return funcName, funcArgs, nil
+	// Извлекаем имя функции
+	funcName := strings.TrimSpace(s[:openParenIndex])
+	if len(funcName) == 0 {
+		return "", nil, fmt.Errorf("function name is missing")
+	}
+
+	// Извлекаем строку с аргументами
+	argsStr := s[openParenIndex+1 : len(s)-1]
+	args, err := parseArguments(argsStr)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return funcName, args, nil
+}
+
+func parseArguments(s string) ([]string, error) {
+	var args []string
+	var currentArg strings.Builder
+	openParens := 0
+	inQuotes := false
+
+	for _, r := range s {
+		switch r {
+		case '(':
+			if !inQuotes {
+				openParens++
+			}
+			currentArg.WriteRune(r)
+		case ')':
+			if !inQuotes {
+				openParens--
+				if openParens < 0 {
+					return nil, fmt.Errorf("unbalanced parentheses in arguments")
+				}
+			}
+			currentArg.WriteRune(r)
+		case '"', '\'':
+			inQuotes = !inQuotes
+			currentArg.WriteRune(r)
+		case ',':
+			if openParens == 0 && !inQuotes {
+				args = append(args, strings.TrimSpace(currentArg.String()))
+				currentArg.Reset()
+			} else {
+				currentArg.WriteRune(r)
+			}
+		default:
+			currentArg.WriteRune(r)
+		}
+	}
+
+	if openParens != 0 {
+		return nil, fmt.Errorf("unbalanced parentheses in arguments")
+	}
+
+	// Добавляем последний аргумент
+	if currentArg.Len() > 0 {
+		args = append(args, strings.TrimSpace(currentArg.String()))
+	}
+
+	return args, nil
 }
 
 func getChildrenUUIDSByLinkTypeRemote(ctx *sf.StatefunContextProcessor, id, filterLinkType string) []string {

@@ -63,6 +63,16 @@ func (c *controllerFunction) Decorate(ctx *sf.StatefunContextProcessor) easyjson
 
 		children := getChildrenUUIDSByLinkTypeRemote(ctx, c.id, lt)
 		return easyjson.JSONFromArray(children)
+	case "getFromJPGQL":
+		db := common.MustDBClient(ctx.Request)
+		query := ""
+		if len(c.args) > 0 {
+			query = c.args[0]
+		}
+		if children, err := db.Query.JPGQLCtraQuery(c.id, query); err == nil {
+			return easyjson.JSONFromArray(children)
+		}
+		return easyjson.JSONFromArray([]string{})
 	case "getInOutLinkTypes":
 		out := getInOutLinkTypes(ctx, c.id)
 		return easyjson.JSONFromArray(out)

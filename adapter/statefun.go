@@ -309,11 +309,9 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 
 func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
 	objectUUID := ctxProcessor.Self.ID
-	fmt.Printf("           ControllerObjectTrigger on object %s\n         data: %s\n", objectUUID, ctxProcessor.Payload.ToString())
 
 	cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctxProcessor.Request)
 	if ctxProcessor.Payload.GetByPath("trigger.link.delete.type").AsStringDefault("") == inStatefun.CONTROLLER_SUBJECT_TYPE {
-		fmt.Printf("          >> ControllerObjectTrigger DELETING object controller %s\n", objectUUID)
 		cmdb.ObjectDelete(objectUUID)
 		return
 	}
@@ -327,7 +325,6 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 			if strings.Contains(linkName, "uiapplib_") {
 				updatePayload := easyjson.NewJSONObject()
 
-				fmt.Printf("          >> ControllerObjectTrigger on object %s calls CONTROLLER_OBJECT_UPDATE on object controller %s\n", objectUUID, fromId)
 				// Need grouping for same controller object at some time window.
 				// Otherwise object controller for object like network switch can start updating every time its port disappears
 				controllerObjectOnTriggerWindowUpdaterMutex.Lock()

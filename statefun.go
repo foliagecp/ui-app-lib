@@ -27,7 +27,7 @@ const (
 func sessionsKeeper(runtime *statefun.Runtime) {
 	dbc, err := db.NewDBSyncClientFromRequestFunction(runtime.Request)
 	if err != nil {
-		logger.Logf(logger.ErrorLevel, "ui-app-lib: cannot start sessionsKeeper, dbc creation error %s\n", err.Error())
+		logger.Logf(logger.ErrorLevel, "ui-app-lib: cannot start sessionsKeeper, dbc creation error %s", err.Error())
 		return
 	}
 

@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -68,7 +69,7 @@ func RegisterFunctions(runtime *statefun.Runtime) {
 	go controllerObjectOnTriggerWindowUpdater(runtime)
 }
 
-func InitSchema(runtime *statefun.Runtime) error {
+func InitSchema(ctx context.Context, runtime *statefun.Runtime) error {
 	cmdb, err := db.NewCMDBSyncClientFromRequestFunction(runtime.Request)
 	if err != nil {
 		return err

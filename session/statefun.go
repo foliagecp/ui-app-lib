@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -34,7 +35,7 @@ func RegisterFunctions(runtime *statefun.Runtime) {
 	runtime.RegisterOnAfterStartFunction(InitSchema, false)
 }
 
-func InitSchema(runtime *statefun.Runtime) error {
+func InitSchema(ctx context.Context, runtime *statefun.Runtime) error {
 	c, err := db.NewCMDBSyncClientFromRequestFunction(runtime.Request)
 	if err != nil {
 		return err

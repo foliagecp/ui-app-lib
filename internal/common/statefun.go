@@ -17,26 +17,26 @@ func MustDBClient(request plugins.SFRequestFunc) db.DBSyncClient {
 }
 
 func OutTargetLink(source, linkname string) string {
-	return fmt.Sprintf(crud.OutLinkTargetKeyPrefPattern+crud.LinkKeySuff1Pattern, source, linkname)
+	return fmt.Sprintf(crud.OutLinkTargetKeyPrefPattern+crud.KeySuff1Pattern, source, linkname)
 }
 
 func OutLinkType(source, ltype string, target ...string) string {
 	if len(target) > 0 {
-		return fmt.Sprintf(crud.OutLinkTypeKeyPrefPattern+crud.LinkKeySuff2Pattern, source, ltype, target[0])
+		return fmt.Sprintf(crud.OutLinkTypeKeyPrefPattern+crud.KeySuff2Pattern, source, ltype, target[0])
 	}
-	return fmt.Sprintf(crud.OutLinkTypeKeyPrefPattern+crud.LinkKeySuff1Pattern, source, ltype)
+	return fmt.Sprintf(crud.OutLinkTypeKeyPrefPattern+crud.KeySuff1Pattern, source, ltype)
 }
 
 func InLinkKeyPattern(id, target string, linkType ...string) string {
 	if len(linkType) > 0 {
 		lt := linkType[0]
 
-		return fmt.Sprintf(crud.InLinkKeyPrefPattern+crud.LinkKeySuff2Pattern,
+		return fmt.Sprintf(crud.InLinkKeyPrefPattern+crud.KeySuff2Pattern,
 			id, target, lt,
 		)
 	}
 
-	return fmt.Sprintf(crud.InLinkKeyPrefPattern+crud.LinkKeySuff1Pattern,
+	return fmt.Sprintf(crud.InLinkKeyPrefPattern+crud.KeySuff1Pattern,
 		id, target,
 	)
 }

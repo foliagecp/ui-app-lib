@@ -35,7 +35,7 @@ func sessionsKeeper(runtime *statefun.Runtime) {
 		time.Sleep(sessionsWatchTimeout)
 		now := time.Now().Unix()
 
-		ids, err := dbc.Query.JPGQLCtraQuery(inStatefun.SESSION_TYPE, fmt.Sprintf(".*[type('%s')]", crud.OBJECT_TYPELINK))
+		ids, err := dbc.Query.JPGQLCtraQuery(inStatefun.SESSION_TYPE, fmt.Sprintf(".*[l:type('%s')]", crud.OBJECT_TYPELINK))
 		if err != nil {
 			slog.Error(err.Error())
 			return

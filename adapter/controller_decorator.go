@@ -84,13 +84,13 @@ func (c *controllerFunction) Decorate(ctx *sf.StatefunContextProcessor) easyjson
 		if reply, err := db.Query.FPLQuery(c.id, query); err == nil {
 			uuids := []string{}
 			// For bare FPL -------------------------------------------------------------
-			if replyUUIDS, ok := reply.GetByPath("data.uuids").AsArrayString(); ok {
+			if replyUUIDS, ok := reply.GetByPath("uuids").AsArrayString(); ok {
 				uuids = replyUUIDS
 			}
 			// --------------------------------------------------------------------------
 			// For FLP post processor function: functions.graph.api.query.fpl.pp.vbody --
-			if reply.PathExists("data.arr") {
-				replyArr := reply.GetByPath("data.arr")
+			if reply.PathExists("arr") {
+				replyArr := reply.GetByPath("arr")
 				if replyArr.IsArray() {
 					for i := 0; i < replyArr.ArraySize(); i++ {
 						replyElem := replyArr.ArrayElement(i)

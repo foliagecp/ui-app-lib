@@ -147,7 +147,7 @@ func parseDecorators(objectID string, payload *easyjson.JSON) map[string]control
 		}
 
 		decorator := tokens[0]
-		value := tokens[1]
+		value := body[len(tokens[0])+1:]
 
 		switch decorator {
 		case _PROPERTY:

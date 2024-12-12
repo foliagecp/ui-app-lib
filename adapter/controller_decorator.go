@@ -11,6 +11,7 @@ import (
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/statefun/logger"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
+	"github.com/foliagecp/sdk/statefun/system"
 	"github.com/foliagecp/ui-app-lib/internal/common"
 	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 )
@@ -73,12 +74,13 @@ func (c *controllerFunction) Decorate(ctx *sf.StatefunContextProcessor) easyjson
 			return easyjson.JSONFromArray(uuids)
 		}
 		return easyjson.JSONFromArray([]string{})
-	case "getFromFPL":
+	case "getFromFPLInBase64":
 		db := common.MustDBClient(ctx.Request)
 		query := ""
 		if len(c.args) > 0 {
 			query = c.args[0]
 		}
+		query = system.Base64ToStr(query)
 		if reply, err := db.Query.FPLQuery(c.id, query); err == nil {
 			uuids := []string{}
 			// For bare FPL -------------------------------------------------------------

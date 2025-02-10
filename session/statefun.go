@@ -100,7 +100,7 @@ func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			weakClustering = true
 		}
 		for _, domain := range ctx.Domain.GetWeakClusterDomains() {
-			objectIdForRoutingDomain := ctx.Domain.CreateObjectIDWithDomain(domain, ctx.Self.ID, true)
+			objectIdForRoutingDomain := ctx.Domain.GetShadowObjectShadowId(ctx.Domain.CreateObjectIDWithDomain(domain, ctx.Self.ID, true))
 			ctx.Signal(sf.AutoSignalSelect, ctx.Self.Typename, objectIdForRoutingDomain, ctx.Payload, ctx.Options)
 		}
 	}

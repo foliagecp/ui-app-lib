@@ -272,7 +272,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 				continue
 			}
 			if weakClustering {
-				if ctx.Domain.GetDomainFromObjectID(controller.UUIDs[0]) != ctx.Domain.Name() {
+				if ctx.Domain.GetDomainFromObjectID(ctx.Domain.GetValidObjectId(controller.UUIDs[0])) != ctx.Domain.Name() {
 					continue
 				}
 			}
@@ -288,7 +288,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 			controllerID := generate.UUID(plugin + name + body.ToString())
 			controllerIDWithDomain := ctx.Domain.CreateObjectIDWithDomain(
-				ctx.Domain.GetDomainFromObjectID(controller.UUIDs[0]),
+				ctx.Domain.GetDomainFromObjectID(ctx.Domain.GetValidObjectId(controller.UUIDs[0])),
 				controllerID.String(),
 				false,
 			)

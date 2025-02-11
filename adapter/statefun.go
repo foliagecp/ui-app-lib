@@ -142,6 +142,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 	body.SetByPath(_CONTROLLER_DECLARATION, payload.GetByPath(_CONTROLLER_DECLARATION))
 	body.SetByPath("name", payload.GetByPath("name"))
 	body.SetByPath("plugin", payload.GetByPath("plugin"))
+	body.SetByPath("is_shadow_object_in_domain", easyjson.NewJSON(payload.GetByPath("is_shadow_object_in_domain").AsStringDefault("")))
 
 	cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
 
@@ -286,7 +287,12 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	// send update to controller subs -----------------------------------------
 	controllerPlugin, _ := controllerBody.GetByPath("plugin").AsString()
 
-	path := fmt.Sprintf("payload.plugins.%s.%s", controllerPlugin, realObjectID)
+	isShadowObjectInDomain := controllerBody.GetByPath("is_shadow_object_in_domain").AsStringDefault("")
+	replyObjectId := realObjectID
+	if len(isShadowObjectInDomain) > 0 {
+		replyObjectId = ctx.Domain.CreateCustomShadowId(isShadowObjectInDomain, ctx.Domain.Name(), ctx.Domain.GetObjectIDWithoutDomain(realObjectID))
+	}
+	path := fmt.Sprintf("payload.plugins.%s.%s", controllerPlugin, replyObjectId)
 
 	updateReply := easyjson.NewJSONObject()
 	updateReply.SetByPath(path, newResult)
@@ -336,38 +342,6 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 				controllerObjectOnTriggerWindowUpdaterTasks[fromId] = &updatePayload
 				controllerObjectOnTriggerWindowUpdaterMutex.Unlock()
 			}
-		}
-	}
-}
-
-func UpdateController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
-	self := ctx.Self
-	body := ctx.GetObjectContext()
-	controllerPlugin, _ := body.GetByPath("plugin").AsString()
-
-	payload := ctx.Payload
-	forceUpdateSessionId := ctx.Payload.GetByPath("force_update_session_id").AsStringDefault("")
-	update := payload.GetByPath("result")
-	realObjectID, _ := payload.GetByPath("object_id").AsString()
-
-	path := fmt.Sprintf("payload.plugins.%s.%s", controllerPlugin, realObjectID)
-
-	updateReply := easyjson.NewJSONObject()
-	updateReply.SetByPath(path, update)
-
-	subscribers := getChildrenUUIDSByLinkTypeLocal(ctx, self.ID, inStatefun.SUBSCRIBER_TYPE)
-
-	if len(forceUpdateSessionId) == 0 {
-		slog.Info("Send update to subscribers", "subscribers", subscribers)
-		for _, subID := range subscribers {
-			if err := egress.SendToSessionEgress(ctx, subID, &updateReply); err != nil {
-				slog.Warn(err.Error())
-			}
-		}
-	} else {
-		slog.Info("Send update to force update requested session only", "subscribers", subscribers)
-		if err := egress.SendToSessionEgress(ctx, forceUpdateSessionId, &updateReply); err != nil {
-			slog.Warn(err.Error())
 		}
 	}
 }

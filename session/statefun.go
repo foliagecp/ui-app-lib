@@ -271,6 +271,10 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			if len(controller.UUIDs) == 0 {
 				continue
 			}
+			isShadowObjectInDomain := ""
+			if ctx.Domain.IsShadowObject(controller.UUIDs[0]) {
+				isShadowObjectInDomain = ctx.Domain.GetDomainFromObjectID(controller.UUIDs[0])
+			}
 			if weakClustering {
 				if ctx.Domain.GetDomainFromObjectID(ctx.Domain.GetValidObjectId(controller.UUIDs[0])) != ctx.Domain.Name() {
 					continue
@@ -284,6 +288,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			payload.SetByPath("declaration", body)
 			payload.SetByPath("uuids", easyjson.JSONFromArray(controller.UUIDs))
 			payload.SetByPath("session_id", easyjson.NewJSON(sessionID))
+			payload.SetByPath("is_shadow_object_in_domain", easyjson.NewJSON(isShadowObjectInDomain))
 			payload.SetByPath("name", easyjson.NewJSON(name))
 
 			controllerID := generate.UUID(plugin + name + body.ToString())

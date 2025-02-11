@@ -165,7 +165,9 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 
 	uuids, _ := payload.GetByPath("uuids").AsArrayString()
 	typesTriggersCreated := map[string]struct{}{}
-	for _, objectUUID := range uuids {
+	for _, oUUID := range uuids {
+		objectUUID := ctx.Domain.GetValidObjectId(oUUID)
+
 		controllerObjectID := generate.UUID(self.ID + objectUUID).String()
 		controllerObjectBody := easyjson.NewJSONObject()
 		controllerObjectBody.SetByPath("object_id", easyjson.NewJSON(objectUUID))

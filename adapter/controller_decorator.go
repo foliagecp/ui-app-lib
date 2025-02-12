@@ -260,7 +260,7 @@ func parseArguments(s string) ([]string, error) {
 	return args, nil
 }
 
-func getChildrenLinkDataRemote(ctx *sf.StatefunContextProcessor, id, filterLinkType string) easyjson.JSON {
+func getChildrenLinkDataRemote(ctx *sf.StatefunContextProcessor, id, filterLinkType string, fields ...string) easyjson.JSON {
 	type TmpLinkId struct {
 		targetUUID, linkName string
 	}
@@ -286,7 +286,16 @@ func getChildrenLinkDataRemote(ctx *sf.StatefunContextProcessor, id, filterLinkT
 	result := easyjson.NewJSONObject()
 	for _, linkId := range linkIds {
 		if data, err := db.Graph.VerticesLinkRead(id, linkId.linkName, false); err == nil {
-			result.SetByPath(linkId.targetUUID, data.GetByPath("body"))
+			linkBody := data.GetByPath("body")
+			if len(fields) == 0 {
+				result.SetByPath(linkId.targetUUID, linkBody)
+			} else {
+				filteredLinkBody := easyjson.NewJSONObject()
+				for _, f := range fields {
+					filteredLinkBody.SetByPath(f, linkBody.GetByPath(f))
+				}
+				result.SetByPath(linkId.targetUUID, filteredLinkBody)
+			}
 		}
 	}
 

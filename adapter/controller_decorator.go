@@ -62,7 +62,7 @@ func (c *controllerFunction) Decorate(ctx *sf.StatefunContextProcessor) easyjson
 			lt = c.args[0]
 		}
 
-		return getChildrenLinkDataRemote(ctx, c.id, lt)
+		return getChildrenLinkDataRemote(ctx, c.id, lt, c.args[1:]...)
 	case "getChildrenUUIDSByLinkType":
 		lt := ""
 		if len(c.args) > 0 {

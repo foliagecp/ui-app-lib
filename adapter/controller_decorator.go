@@ -56,6 +56,13 @@ type controllerFunction struct {
 
 func (c *controllerFunction) Decorate(ctx *sf.StatefunContextProcessor) easyjson.JSON {
 	switch c.function {
+	case "getChildrenLinkData":
+		lt := ""
+		if len(c.args) > 0 {
+			lt = c.args[0]
+		}
+
+		return getChildrenLinkDataRemote(ctx, c.id, lt)
 	case "getChildrenUUIDSByLinkType":
 		lt := ""
 		if len(c.args) > 0 {
@@ -251,6 +258,39 @@ func parseArguments(s string) ([]string, error) {
 	}
 
 	return args, nil
+}
+
+func getChildrenLinkDataRemote(ctx *sf.StatefunContextProcessor, id, filterLinkType string) easyjson.JSON {
+	type TmpLinkId struct {
+		targetUUID, linkName string
+	}
+	linkIds := []TmpLinkId{}
+
+	db := common.MustDBClient(ctx.Request)
+
+	data, err := db.Graph.VertexRead(id, true)
+	if err != nil {
+		logger.Logln(logger.ErrorLevel, err.Error())
+		return easyjson.NewJSONObject()
+	}
+
+	for i := 0; i < data.GetByPath("links.out.names").ArraySize(); i++ {
+		tp := data.GetByPath("links.out.types").ArrayElement(i).AsStringDefault("")
+		toId := data.GetByPath("links.out.ids").ArrayElement(i).AsStringDefault("")
+		lName := data.GetByPath("links.out.names").ArrayElement(i).AsStringDefault("")
+		if tp == filterLinkType {
+			linkIds = append(linkIds, TmpLinkId{toId, lName})
+		}
+	}
+
+	result := easyjson.NewJSONObject()
+	for _, linkId := range linkIds {
+		if data, err := db.Graph.VerticesLinkRead(id, linkId.linkName, false); err == nil {
+			result.SetByPath(linkId.targetUUID, data.GetByPath("body"))
+		}
+	}
+
+	return result
 }
 
 func getChildrenUUIDSByLinkTypeRemote(ctx *sf.StatefunContextProcessor, id, filterLinkType string) []string {

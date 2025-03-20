@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -271,10 +272,19 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			if len(controller.UUIDs) == 0 {
 				continue
 			}
-			isShadowObjectInDomain := ""
+			isShadowObjectInDomain := "" // This controller works this objects that are shadow objects in DOMAIN with name = "..."
 			if ctx.Domain.IsShadowObject(controller.UUIDs[0]) {
 				isShadowObjectInDomain = ctx.Domain.GetDomainFromObjectID(controller.UUIDs[0])
 			}
+
+			slog.Info(fmt.Sprintf(
+				"::::: StartController: SelfID=%s DomainName=%s WeakClustering=%t UUID[0]=%s GetValidObjectId(UUIDs[0])=%s",
+				ctx.Self.ID,
+				ctx.Domain.Name(),
+				weakClustering,
+				controller.UUIDs[0],
+				ctx.Domain.GetValidObjectId(controller.UUIDs[0]),
+			))
 			if weakClustering {
 				if ctx.Domain.GetDomainFromObjectID(ctx.Domain.GetValidObjectId(controller.UUIDs[0])) != ctx.Domain.Name() {
 					continue
@@ -297,6 +307,15 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 				controllerID.String(),
 				false,
 			)
+
+			if ctx.Domain.GetDomainFromObjectID(ctx.Self.ID) != ctx.Domain.GetDomainFromObjectID(controllerIDWithDomain) {
+				slog.Warn(
+					fmt.Sprintf("::::: StartController: domains are not the same for SelfID=%s and UUID[0]=%s",
+						ctx.Self.ID,
+						controller.UUIDs[0],
+					))
+				continue
+			}
 
 			err := ctx.Signal(sf.AutoSignalSelect, inStatefun.CONTROLLER_START, controllerIDWithDomain, &payload, nil)
 			if err != nil {

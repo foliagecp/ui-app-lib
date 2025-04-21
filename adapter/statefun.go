@@ -212,6 +212,31 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 		controllerObjectBody.SetByPath("object_id", easyjson.NewJSON(objectUUID))
 		controllerObjectBody.SetByPath("parent", easyjson.NewJSON(self.ID))
 
+		// send to update сontroller object
+		payload := easyjson.NewJSONObjectWithKeyValue("force_update_session_id", easyjson.NewJSON(sessionId))
+		payload.SetByPath("controllerObjectBody", controllerObjectBody)
+		//ctx.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil) // Sync call for Golang direct call if possible (speedup?)
+		ctx.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil)
+	}
+}
+
+// fetch declaration from controller
+// send to construct
+// compare result
+// if it's different send update to controller
+func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
+	controllerObjectID := ctx.Self.ID
+	slog.Info("Update controller object", "id", controllerObjectID)
+
+	var body *easyjson.JSON
+	var parentControllerID string
+
+	// -----------------------------------------
+	if controllerObjectBody := ctx.Payload.GetByPath("controllerObjectBody"); controllerObjectBody.IsNonEmptyObject() {
+		parentUUID := controllerObjectBody.GetByPath("parent").AsStringDefault("")
+		objectUUID := controllerObjectBody.GetByPath("object_id").AsStringDefault("")
+		cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
+
 		if err := cmdb.ObjectCreate(controllerObjectID, inStatefun.CONTROLLER_OBJECT_TYPE, controllerObjectBody); err != nil {
 			if !common.ErrorAlreadyExists(err) {
 				slog.Warn("failed to create controller object", "err", err.Error())
@@ -226,34 +251,24 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 			}
 		}
 
-		if err := cmdb.ObjectsLinkCreate(self.ID, controllerObjectID, controllerObjectID, []string{}); err != nil {
+		if err := cmdb.ObjectsLinkCreate(parentUUID, controllerObjectID, controllerObjectID, []string{}); err != nil {
 			if !common.ErrorAlreadyExists(err) {
 				slog.Warn("failed to create objects link between controller and controller object", "err", err.Error())
 				return
 			}
 		}
-
-		// send to update сontroller object
-		payload := easyjson.NewJSONObjectWithKeyValue("force_update_session_id", easyjson.NewJSON(sessionId))
-		//ctx.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil) // Sync call for Golang direct call if possible (speedup?)
-		ctx.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil)
+		body = &controllerObjectBody
+		parentControllerID = parentUUID
+	} else {
+		body = ctx.GetObjectContext()
+		parentUUID, ok := body.GetByPath("parent").AsString()
+		if !ok {
+			slog.Warn("empty controller id")
+			return
+		}
+		parentControllerID = parentUUID
 	}
-}
-
-// fetch declaration from controller
-// send to construct
-// compare result
-// if it's different send update to controller
-func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
-	controllerObjectID := ctx.Self.ID
-	slog.Info("Update controller object", "id", controllerObjectID)
-
-	body := ctx.GetObjectContext()
-	parentControllerID, ok := body.GetByPath("parent").AsString()
-	if !ok {
-		slog.Warn("empty controller id")
-		return
-	}
+	// -----------------------------------------
 
 	controllerBody, err := ctx.Domain.Cache().GetValueAsJSON(parentControllerID)
 	if err != nil {

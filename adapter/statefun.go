@@ -165,76 +165,85 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 	}
 
 	uuids, _ := payload.GetByPath("uuids").AsArrayString()
-	typesTriggersCreated := map[string]struct{}{}
+	if len(uuids) == 0 {
+		return
+	}
+
+	// Prepare type data ---------------------------------
+	objectUUID := ctx.Domain.GetValidObjectId(uuids[0])
+	objectType, err := common.ObjectType(cmdb, objectUUID)
+	if err != nil {
+		if !common.ErrorAlreadyExists(err) {
+			slog.Warn("failed to find uuid type", "err", err.Error())
+			return
+		}
+	}
+
+	if err := cmdb.TypesLinkCreate(inStatefun.CONTROLLER_OBJECT_TYPE, objectType, inStatefun.CONTROLLER_SUBJECT_TYPE, []string{}); err != nil {
+		if !common.ErrorAlreadyExists(err) {
+			slog.Warn("failed to create types link between controller object and uuid", "err", err.Error())
+			return
+		}
+	}
+
+	cmdb.TriggerObjectSet(objectType, db.UpdateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+	cmdb.TriggerObjectSet(objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+
+	if typeData, err := cmdb.TypeRead(objectType); err == nil {
+		linksIn := typeData.GetByPath("links.in")
+		for i := 0; i < linksIn.ArraySize(); i++ {
+			linkData := typeData.GetByPath("links.in").ArrayElement(i)
+			if linkData.GetByPath("name").AsStringDefault("") == objectType { // link from other type
+				fromId := linkData.GetByPath("from").AsStringDefault("")
+				if len(fromId) > 0 && ctx.Domain.GetObjectIDWithoutDomain(fromId) != crud.BUILT_IN_TYPES {
+					cmdb.TriggerLinkSet(fromId, objectType, db.CreateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+					cmdb.TriggerLinkSet(fromId, objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+				}
+			}
+		}
+	}
+	// ----------------------------------------------------
+
+	var wg sync.WaitGroup
 	for _, oUUID := range uuids {
-		objectUUID := ctx.Domain.GetValidObjectId(oUUID)
+		wg.Add(1)
+		go func(oUUID string) {
+			defer wg.Add(-1)
 
-		controllerObjectID := generate.UUID(self.ID + objectUUID).String()
-		controllerObjectBody := easyjson.NewJSONObject()
-		controllerObjectBody.SetByPath("object_id", easyjson.NewJSON(objectUUID))
-		controllerObjectBody.SetByPath("parent", easyjson.NewJSON(self.ID))
+			objectUUID := ctx.Domain.GetValidObjectId(oUUID)
 
-		if err := cmdb.ObjectCreate(controllerObjectID, inStatefun.CONTROLLER_OBJECT_TYPE, controllerObjectBody); err != nil {
-			if !common.ErrorAlreadyExists(err) {
-				slog.Warn("failed to create controller object", "err", err.Error())
-				continue
-			}
-		}
+			controllerObjectID := generate.UUID(self.ID + objectUUID).String()
+			controllerObjectBody := easyjson.NewJSONObject()
+			controllerObjectBody.SetByPath("object_id", easyjson.NewJSON(objectUUID))
+			controllerObjectBody.SetByPath("parent", easyjson.NewJSON(self.ID))
 
-		objectType, err := common.ObjectType(cmdb, objectUUID)
-		if err != nil {
-			if !common.ErrorAlreadyExists(err) {
-				slog.Warn("failed to find uuid type", "err", err.Error())
-				continue
-			}
-		}
-
-		if err := cmdb.TypesLinkCreate(inStatefun.CONTROLLER_OBJECT_TYPE, objectType, inStatefun.CONTROLLER_SUBJECT_TYPE, []string{}); err != nil {
-			if !common.ErrorAlreadyExists(err) {
-				slog.Warn("failed to create types link between controller object and uuid", "err", err.Error())
-				continue
-			}
-		}
-
-		if err := cmdb.ObjectsLinkCreate(controllerObjectID, objectUUID, "uiapplib_"+objectUUID, []string{}); err != nil {
-			if !common.ErrorAlreadyExists(err) {
-				slog.Warn("failed to create objects link between controller object and uuid", "err", err.Error())
-				continue
-			}
-		}
-
-		if err := cmdb.ObjectsLinkCreate(self.ID, controllerObjectID, controllerObjectID, []string{}); err != nil {
-			if !common.ErrorAlreadyExists(err) {
-				slog.Warn("failed to create objects link between controller and controller object", "err", err.Error())
-				continue
-			}
-		}
-
-		if _, ok := typesTriggersCreated[objectType]; !ok {
-			cmdb.TriggerObjectSet(objectType, db.UpdateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
-			cmdb.TriggerObjectSet(objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
-
-			if typeData, err := cmdb.TypeRead(objectType); err == nil {
-				linksIn := typeData.GetByPath("links.in")
-				for i := 0; i < linksIn.ArraySize(); i++ {
-					linkData := typeData.GetByPath("links.in").ArrayElement(i)
-					if linkData.GetByPath("name").AsStringDefault("") == objectType { // link from other type
-						fromId := linkData.GetByPath("from").AsStringDefault("")
-						if len(fromId) > 0 && ctx.Domain.GetObjectIDWithoutDomain(fromId) != crud.BUILT_IN_TYPES {
-							cmdb.TriggerLinkSet(fromId, objectType, db.CreateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
-							cmdb.TriggerLinkSet(fromId, objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
-						}
-					}
+			if err := cmdb.ObjectCreate(controllerObjectID, inStatefun.CONTROLLER_OBJECT_TYPE, controllerObjectBody); err != nil {
+				if !common.ErrorAlreadyExists(err) {
+					slog.Warn("failed to create controller object", "err", err.Error())
+					return
 				}
 			}
 
-			typesTriggersCreated[objectType] = struct{}{}
-		}
+			if err := cmdb.ObjectsLinkCreate(controllerObjectID, objectUUID, "uiapplib_"+objectUUID, []string{}); err != nil {
+				if !common.ErrorAlreadyExists(err) {
+					slog.Warn("failed to create objects link between controller object and uuid", "err", err.Error())
+					return
+				}
+			}
 
-		// send to update сontroller object
-		payload := easyjson.NewJSONObjectWithKeyValue("force_update_session_id", easyjson.NewJSON(sessionId))
-		ctx.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil)
+			if err := cmdb.ObjectsLinkCreate(self.ID, controllerObjectID, controllerObjectID, []string{}); err != nil {
+				if !common.ErrorAlreadyExists(err) {
+					slog.Warn("failed to create objects link between controller and controller object", "err", err.Error())
+					return
+				}
+			}
+
+			// send to update сontroller object
+			payload := easyjson.NewJSONObjectWithKeyValue("force_update_session_id", easyjson.NewJSON(sessionId))
+			ctx.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil)
+		}(oUUID)
 	}
+	wg.Wait()
 }
 
 // fetch declaration from controller

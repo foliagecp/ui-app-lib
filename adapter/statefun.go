@@ -204,46 +204,40 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 	}
 	// ----------------------------------------------------
 
-	var wg sync.WaitGroup
 	for _, oUUID := range uuids {
-		wg.Add(1)
-		go func(oUUID string) {
-			defer wg.Add(-1)
+		objectUUID := ctx.Domain.GetValidObjectId(oUUID)
 
-			objectUUID := ctx.Domain.GetValidObjectId(oUUID)
+		controllerObjectID := generate.UUID(self.ID + objectUUID).String()
+		controllerObjectBody := easyjson.NewJSONObject()
+		controllerObjectBody.SetByPath("object_id", easyjson.NewJSON(objectUUID))
+		controllerObjectBody.SetByPath("parent", easyjson.NewJSON(self.ID))
 
-			controllerObjectID := generate.UUID(self.ID + objectUUID).String()
-			controllerObjectBody := easyjson.NewJSONObject()
-			controllerObjectBody.SetByPath("object_id", easyjson.NewJSON(objectUUID))
-			controllerObjectBody.SetByPath("parent", easyjson.NewJSON(self.ID))
-
-			if err := cmdb.ObjectCreate(controllerObjectID, inStatefun.CONTROLLER_OBJECT_TYPE, controllerObjectBody); err != nil {
-				if !common.ErrorAlreadyExists(err) {
-					slog.Warn("failed to create controller object", "err", err.Error())
-					return
-				}
+		if err := cmdb.ObjectCreate(controllerObjectID, inStatefun.CONTROLLER_OBJECT_TYPE, controllerObjectBody); err != nil {
+			if !common.ErrorAlreadyExists(err) {
+				slog.Warn("failed to create controller object", "err", err.Error())
+				return
 			}
+		}
 
-			if err := cmdb.ObjectsLinkCreate(controllerObjectID, objectUUID, "uiapplib_"+objectUUID, []string{}); err != nil {
-				if !common.ErrorAlreadyExists(err) {
-					slog.Warn("failed to create objects link between controller object and uuid", "err", err.Error())
-					return
-				}
+		if err := cmdb.ObjectsLinkCreate(controllerObjectID, objectUUID, "uiapplib_"+objectUUID, []string{}); err != nil {
+			if !common.ErrorAlreadyExists(err) {
+				slog.Warn("failed to create objects link between controller object and uuid", "err", err.Error())
+				return
 			}
+		}
 
-			if err := cmdb.ObjectsLinkCreate(self.ID, controllerObjectID, controllerObjectID, []string{}); err != nil {
-				if !common.ErrorAlreadyExists(err) {
-					slog.Warn("failed to create objects link between controller and controller object", "err", err.Error())
-					return
-				}
+		if err := cmdb.ObjectsLinkCreate(self.ID, controllerObjectID, controllerObjectID, []string{}); err != nil {
+			if !common.ErrorAlreadyExists(err) {
+				slog.Warn("failed to create objects link between controller and controller object", "err", err.Error())
+				return
 			}
+		}
 
-			// send to update сontroller object
-			payload := easyjson.NewJSONObjectWithKeyValue("force_update_session_id", easyjson.NewJSON(sessionId))
-			ctx.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil)
-		}(oUUID)
+		// send to update сontroller object
+		payload := easyjson.NewJSONObjectWithKeyValue("force_update_session_id", easyjson.NewJSON(sessionId))
+		ctx.Request(sfplugins.GolangLocalRequest, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil)
+		//ctx.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil)
 	}
-	wg.Wait()
 }
 
 // fetch declaration from controller

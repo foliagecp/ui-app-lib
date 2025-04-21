@@ -228,6 +228,9 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	controllerObjectID := ctx.Self.ID
 	slog.Info("Update controller object", "id", controllerObjectID)
 
+	var body *easyjson.JSON
+	var parentControllerID string
+
 	// -----------------------------------------
 	if controllerObjectBody := ctx.Payload.GetByPath("controllerObjectBody"); controllerObjectBody.IsNonEmptyObject() {
 		parentUUID := controllerObjectBody.GetByPath("parent").AsStringDefault("")
@@ -254,15 +257,18 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 				return
 			}
 		}
+		body = &controllerObjectBody
+		parentControllerID = parentUUID
+	} else {
+		body = ctx.GetObjectContext()
+		parentUUID, ok := body.GetByPath("parent").AsString()
+		if !ok {
+			slog.Warn("empty controller id")
+			return
+		}
+		parentControllerID = parentUUID
 	}
 	// -----------------------------------------
-
-	body := ctx.GetObjectContext()
-	parentControllerID, ok := body.GetByPath("parent").AsString()
-	if !ok {
-		slog.Warn("empty controller id")
-		return
-	}
 
 	controllerBody, err := ctx.Domain.Cache().GetValueAsJSON(parentControllerID)
 	if err != nil {

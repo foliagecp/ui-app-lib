@@ -230,35 +230,43 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 
 	var body *easyjson.JSON
 	var parentControllerID string
+	var realObjectID string
 
 	// -----------------------------------------
 	if controllerObjectBody := ctx.Payload.GetByPath("controllerObjectBody"); controllerObjectBody.IsNonEmptyObject() {
-		parentUUID := controllerObjectBody.GetByPath("parent").AsStringDefault("")
-		objectUUID := controllerObjectBody.GetByPath("object_id").AsStringDefault("")
-		cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
+		body = ctx.GetObjectContext()
+		parentUUID := body.GetByPath("parent").AsStringDefault("")
+		objectUUID := body.GetByPath("object_id").AsStringDefault("")
 
-		if err := cmdb.ObjectCreate(controllerObjectID, inStatefun.CONTROLLER_OBJECT_TYPE, controllerObjectBody); err != nil {
-			if !common.ErrorAlreadyExists(err) {
-				slog.Warn("failed to create controller object", "err", err.Error())
-				return
-			}
-		}
+		if len(parentUUID) == 0 || len(objectUUID) == 0 {
+			parentUUID = controllerObjectBody.GetByPath("parent").AsStringDefault("")
+			objectUUID = controllerObjectBody.GetByPath("object_id").AsStringDefault("")
+			cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
 
-		if err := cmdb.ObjectsLinkCreate(controllerObjectID, objectUUID, "uiapplib_"+objectUUID, []string{}); err != nil {
-			if !common.ErrorAlreadyExists(err) {
-				slog.Warn("failed to create objects link between controller object and uuid", "err", err.Error())
-				return
+			if err := cmdb.ObjectCreate(controllerObjectID, inStatefun.CONTROLLER_OBJECT_TYPE, controllerObjectBody); err != nil {
+				if !common.ErrorAlreadyExists(err) {
+					slog.Warn("failed to create controller object", "err", err.Error())
+					return
+				}
 			}
-		}
 
-		if err := cmdb.ObjectsLinkCreate(parentUUID, controllerObjectID, controllerObjectID, []string{}); err != nil {
-			if !common.ErrorAlreadyExists(err) {
-				slog.Warn("failed to create objects link between controller and controller object", "err", err.Error())
-				return
+			if err := cmdb.ObjectsLinkCreate(controllerObjectID, objectUUID, "uiapplib_"+objectUUID, []string{}); err != nil {
+				if !common.ErrorAlreadyExists(err) {
+					slog.Warn("failed to create objects link between controller object and uuid", "err", err.Error())
+					return
+				}
 			}
+
+			if err := cmdb.ObjectsLinkCreate(parentUUID, controllerObjectID, controllerObjectID, []string{}); err != nil {
+				if !common.ErrorAlreadyExists(err) {
+					slog.Warn("failed to create objects link between controller and controller object", "err", err.Error())
+					return
+				}
+			}
+			body = &controllerObjectBody
 		}
-		body = &controllerObjectBody
 		parentControllerID = parentUUID
+		realObjectID = objectUUID
 	} else {
 		body = ctx.GetObjectContext()
 		parentUUID, ok := body.GetByPath("parent").AsString()
@@ -267,6 +275,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 			return
 		}
 		parentControllerID = parentUUID
+		realObjectID = body.GetByPath("object_id").AsStringDefault("")
 	}
 	// -----------------------------------------
 
@@ -277,7 +286,6 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	}
 
 	controllerDeclaration := controllerBody.GetByPath(_CONTROLLER_DECLARATION)
-	realObjectID := body.GetByPath("object_id").AsStringDefault("")
 
 	result, err := ctx.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_CONSTRUCT, realObjectID, &controllerDeclaration, nil)
 	if err != nil {

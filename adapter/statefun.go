@@ -36,7 +36,7 @@ const (
 
 func controllerObjectOnTriggerWindowUpdater(runtime *statefun.Runtime) {
 	for {
-		time.Sleep(1 * time.Second)
+		time.Sleep(2 * time.Second)
 
 		controllerObjectOnTriggerWindowUpdaterMutex.Lock()
 		if controllerObjectOnTriggerWindowUpdaterWindowStartNs > 0 {

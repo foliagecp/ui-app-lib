@@ -10,7 +10,7 @@ import (
 func Register(r *statefun.Runtime) {
 	statefun.NewFunctionType(r, inStatefun.TYPES_NAVIGATION_DECORATOR, typesNavigation, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sf.AutoRequestSelect).SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(r, inStatefun.IO_LINK_TYPES_DECORATOR, inOutLinkTypes, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sf.AutoRequestSelect).SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(r, inStatefun.LINKS_TYPE_DECORATOR, linksByType, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sf.AutoRequestSelect).SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(r, inStatefun.LINKS_TYPE_DECORATOR, linksByType, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sf.AutoRequestSelect).SetWorkerPoolLoadType(statefun.WPLoadHigh))
 }
 
 func errResponse(ctx *sf.StatefunContextProcessor, msg string) {

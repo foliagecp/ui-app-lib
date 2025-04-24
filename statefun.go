@@ -1,5 +1,3 @@
-
-
 package uilib
 
 import (
@@ -21,7 +19,7 @@ import (
 const (
 	sessionsWatchTimeout     = 60 * time.Second
 	sessionInactivityTimeout = 12 * time.Hour
-	maxSessionsCount         = 20
+	maxSessionsCount         = 10
 )
 
 func sessionsKeeper(runtime *statefun.Runtime) {

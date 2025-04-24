@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/foliagecp/easyjson"
+	"github.com/foliagecp/sdk/clients/go/db"
 	"github.com/foliagecp/sdk/statefun/logger"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/sdk/statefun/system"
@@ -23,7 +24,7 @@ const (
 )
 
 type controllerDecorator interface {
-	Decorate(ctx *sf.StatefunContextProcessor) easyjson.JSON
+	Decorate(db *db.DBSyncClient, targetObjectData *easyjson.JSON) easyjson.JSON
 }
 
 type controllerProperty struct {
@@ -31,20 +32,8 @@ type controllerProperty struct {
 	path string
 }
 
-func (c *controllerProperty) Decorate(ctx *sf.StatefunContextProcessor) easyjson.JSON {
-	body := easyjson.NewJSONObject().GetPtr()
-	db := common.MustDBClient(ctx.Request)
-
-	data, err := db.Graph.VertexRead(ctx.Self.ID, false)
-	if err != nil {
-		logger.Logln(logger.ErrorLevel, err.Error())
-	} else {
-		b := data.GetByPathPtr("body")
-		if b.IsNonEmptyObject() {
-			body = b
-		}
-	}
-
+func (c *controllerProperty) Decorate(db *db.DBSyncClient, targetObjectData *easyjson.JSON) easyjson.JSON {
+	body := targetObjectData.GetByPathPtr("body")
 	return body.GetByPath(c.path)
 }
 
@@ -54,7 +43,7 @@ type controllerFunction struct {
 	args     []string
 }
 
-func (c *controllerFunction) Decorate(ctx *sf.StatefunContextProcessor) easyjson.JSON {
+func (c *controllerFunction) Decorate(db *db.DBSyncClient, _ *easyjson.JSON) easyjson.JSON {
 	switch c.function {
 	case "getChildrenLinkData":
 		lt := ""
@@ -62,17 +51,16 @@ func (c *controllerFunction) Decorate(ctx *sf.StatefunContextProcessor) easyjson
 			lt = c.args[0]
 		}
 
-		return getChildrenLinkDataRemote(ctx, c.id, lt, c.args[1:]...)
+		return getChildrenLinkDataRemote(db, c.id, lt, c.args[1:]...)
 	case "getChildrenUUIDSByLinkType":
 		lt := ""
 		if len(c.args) > 0 {
 			lt = c.args[0]
 		}
 
-		children := getChildrenUUIDSByLinkTypeRemote(ctx, c.id, lt)
+		children := getChildrenUUIDSByLinkTypeRemote(db, c.id, lt)
 		return easyjson.JSONFromArray(children)
 	case "getFromJPGQL":
-		db := common.MustDBClient(ctx.Request)
 		query := ""
 		if len(c.args) > 0 {
 			query = c.args[0]
@@ -82,7 +70,6 @@ func (c *controllerFunction) Decorate(ctx *sf.StatefunContextProcessor) easyjson
 		}
 		return easyjson.JSONFromArray([]string{})
 	case "getFromFPLInBase64":
-		db := common.MustDBClient(ctx.Request)
 		query := ""
 		if len(c.args) > 0 {
 			query = c.args[0]
@@ -113,10 +100,10 @@ func (c *controllerFunction) Decorate(ctx *sf.StatefunContextProcessor) easyjson
 		}
 		return easyjson.JSONFromArray([]string{})
 	case "getInOutLinkTypes":
-		out := getInOutLinkTypes(ctx, c.id)
+		out := getInOutLinkTypes(db, c.id)
 		return easyjson.JSONFromArray(out)
 	case "getOutLinkTypes":
-		out := getOutLinkTypes(ctx, c.id)
+		out := getOutLinkTypes(db, c.id)
 		return easyjson.JSONFromArray(out)
 	case "getLinksByType":
 		if len(c.args) != 1 {
@@ -124,7 +111,7 @@ func (c *controllerFunction) Decorate(ctx *sf.StatefunContextProcessor) easyjson
 		}
 
 		lt := c.args[0]
-		out := getLinksByType(ctx, c.id, lt)
+		out := getLinksByType(db, c.id, lt)
 		return easyjson.NewJSON(out)
 	case "typesNavigation":
 		if len(c.args) != 1 {
@@ -132,7 +119,7 @@ func (c *controllerFunction) Decorate(ctx *sf.StatefunContextProcessor) easyjson
 		}
 
 		radius, _ := strconv.Atoi(c.args[0])
-		return typesNavigation(ctx, c.id, radius)
+		return typesNavigation(db, c.id, radius)
 	}
 
 	return easyjson.NewJSONObject()
@@ -260,13 +247,11 @@ func parseArguments(s string) ([]string, error) {
 	return args, nil
 }
 
-func getChildrenLinkDataRemote(ctx *sf.StatefunContextProcessor, id, filterLinkType string, fields ...string) easyjson.JSON {
+func getChildrenLinkDataRemote(db *db.DBSyncClient, id, filterLinkType string, fields ...string) easyjson.JSON {
 	type TmpLinkId struct {
 		targetUUID, linkName string
 	}
 	linkIds := []TmpLinkId{}
-
-	db := common.MustDBClient(ctx.Request)
 
 	data, err := db.Graph.VertexRead(id, true)
 	if err != nil {
@@ -302,10 +287,8 @@ func getChildrenLinkDataRemote(ctx *sf.StatefunContextProcessor, id, filterLinkT
 	return result
 }
 
-func getChildrenUUIDSByLinkTypeRemote(ctx *sf.StatefunContextProcessor, id, filterLinkType string) []string {
+func getChildrenUUIDSByLinkTypeRemote(db *db.DBSyncClient, id, filterLinkType string) []string {
 	result := []string{}
-
-	db := common.MustDBClient(ctx.Request)
 
 	data, err := db.Graph.VertexRead(id, true)
 	if err != nil {
@@ -345,10 +328,10 @@ func getChildrenUUIDSByLinkTypeLocal(ctx *sf.StatefunContextProcessor, id, filte
 	return result
 }
 
-func getInOutLinkTypes(ctx *sf.StatefunContextProcessor, id string) []string {
+func getInOutLinkTypes(db *db.DBSyncClient, id string) []string {
 	payload := easyjson.NewJSONObject()
 
-	result, err := ctx.Request(sf.AutoRequestSelect, inStatefun.IO_LINK_TYPES_DECORATOR, id, &payload, nil)
+	result, err := db.Request(sf.AutoRequestSelect, inStatefun.IO_LINK_TYPES_DECORATOR, id, &payload, nil)
 	if err != nil {
 		return []string{}
 	}
@@ -363,10 +346,10 @@ func getInOutLinkTypes(ctx *sf.StatefunContextProcessor, id string) []string {
 	return append(in, out...)
 }
 
-func getOutLinkTypes(ctx *sf.StatefunContextProcessor, id string) []string {
+func getOutLinkTypes(db *db.DBSyncClient, id string) []string {
 	payload := easyjson.NewJSONObject()
 
-	result, err := ctx.Request(sf.AutoRequestSelect, inStatefun.IO_LINK_TYPES_DECORATOR, id, &payload, nil)
+	result, err := db.Request(sf.AutoRequestSelect, inStatefun.IO_LINK_TYPES_DECORATOR, id, &payload, nil)
 	if err != nil {
 		return []string{}
 	}
@@ -387,11 +370,11 @@ type Link struct {
 	Tags   []string `json:"tags,omitempty"`
 }
 
-func getLinksByType(ctx *sf.StatefunContextProcessor, id, filterLinkType string) []Link {
+func getLinksByType(db *db.DBSyncClient, id, filterLinkType string) []Link {
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("link_type", easyjson.NewJSON(filterLinkType))
 
-	result, err := ctx.Request(sf.AutoRequestSelect, inStatefun.LINKS_TYPE_DECORATOR, id, &payload, nil)
+	result, err := db.Request(sf.AutoRequestSelect, inStatefun.LINKS_TYPE_DECORATOR, id, &payload, nil)
 	if err != nil {
 		return []Link{}
 	}
@@ -409,11 +392,11 @@ func getLinksByType(ctx *sf.StatefunContextProcessor, id, filterLinkType string)
 	return links
 }
 
-func typesNavigation(ctx *sf.StatefunContextProcessor, id string, radius int) easyjson.JSON {
+func typesNavigation(db *db.DBSyncClient, id string, radius int) easyjson.JSON {
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("radius", easyjson.NewJSON(radius))
 
-	result, err := ctx.Request(sf.AutoRequestSelect, inStatefun.TYPES_NAVIGATION_DECORATOR, id, &payload, nil)
+	result, err := db.Request(sf.AutoRequestSelect, inStatefun.TYPES_NAVIGATION_DECORATOR, id, &payload, nil)
 	if err != nil {
 		return easyjson.JSON{}
 	}

@@ -58,9 +58,8 @@ func controllerObjectOnTriggerWindowUpdater(runtime *statefun.Runtime) {
 func RegisterFunctions(runtime *statefun.Runtime) {
 	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_START, StartController, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CLEAR, ClearController, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_UPDATE, UpdateControllerObject, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sfplugins.AutoRequestSelect))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_UPDATE, UpdateControllerObject, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_TRIGGER, ControllerObjectTrigger, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CONSTRUCT, ControllerConstruct, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sfplugins.AutoRequestSelect))
 
 	decorators.Register(runtime)
 
@@ -215,8 +214,8 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 		// send to update сontroller object
 		payload := easyjson.NewJSONObjectWithKeyValue("force_update_session_id", easyjson.NewJSON(sessionId))
 		payload.SetByPath("controllerObjectBody", controllerObjectBody)
-		ctx.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil) // Sync call for Golang direct call if possible (speedup?)
-		//ctx.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil)
+		//ctx.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil) // Sync call for Golang direct call if possible (speedup?)
+		ctx.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil)
 	}
 }
 
@@ -287,7 +286,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 
 	controllerDeclaration := controllerBody.GetByPath(_CONTROLLER_DECLARATION)
 
-	result, err := ctx.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_CONSTRUCT, realObjectID, &controllerDeclaration, nil)
+	result, err := ControllerConstruct(ctx, realObjectID, &controllerDeclaration)
 	if err != nil {
 		result = easyjson.NewJSONObject().GetPtr()
 	}
@@ -379,7 +378,7 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 
 @function:getChildren(linkType) - now
 */
-func ControllerConstruct(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
+/*func ControllerConstruct(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
 	id := ctx.Self.ID
 	payload := ctx.Payload
 
@@ -393,6 +392,24 @@ func ControllerConstruct(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunCo
 	}
 
 	common.Reply(ctx, "ok", construct)
+}*/
+
+func ControllerConstruct(ctx *sfplugins.StatefunContextProcessor, realObjectId string, controllerDeclaration *easyjson.JSON) (*easyjson.JSON, error) {
+	decorators := parseDecorators(realObjectId, controllerDeclaration)
+
+	construct := easyjson.NewJSONObject()
+
+	db := common.MustDBClient(ctx.Request)
+	if data, err := db.Graph.VertexRead(realObjectId, false); err == nil {
+		for key, d := range decorators {
+			result := d.Decorate(&db, &data)
+			construct.SetByPath(key, result)
+		}
+	} else {
+		return nil, fmt.Errorf("ControllerConstruct error: %s", err.Error())
+	}
+
+	return &construct, nil
 }
 
 func ClearController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {

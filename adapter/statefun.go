@@ -295,7 +295,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 		return
 	}
 
-	newResult := result.GetByPath("result")
+	newResult := *result
 
 	forceUpdateSessionId := ctx.Payload.GetByPath("force_update_session_id").AsStringDefault("")
 	if len(forceUpdateSessionId) == 0 && checkUpdates {

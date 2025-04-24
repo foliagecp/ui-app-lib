@@ -143,7 +143,7 @@ func (s *adapterTestSuite) Test_ControllerObjectTrigger_Correct() {
 	time.Sleep(1 * time.Second)
 }
 
-/*func (s *adapterTestSuite) Test_ConstructController_Correct() {
+func (s *adapterTestSuite) Test_ConstructController_Correct() {
 	typename := inStatefun.CONTROLLER_CONSTRUCT
 
 	crud.RegisterAllFunctionTypes(s.Runtime())
@@ -170,4 +170,4 @@ func (s *adapterTestSuite) Test_ControllerObjectTrigger_Correct() {
 	s.Require().NoError(err)
 
 	s.JSONEq(objectBody.GetByPath("key").ToString(), result.GetByPath("result.props").ToString())
-}*/
+}

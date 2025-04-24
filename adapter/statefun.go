@@ -60,6 +60,7 @@ func RegisterFunctions(runtime *statefun.Runtime) {
 	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CLEAR, ClearController, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_UPDATE, UpdateControllerObject, *statefun.NewFunctionTypeConfig())
 	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_TRIGGER, ControllerObjectTrigger, *statefun.NewFunctionTypeConfig())
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CONSTRUCT, ControllerConstruct, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sfplugins.AutoRequestSelect))
 
 	decorators.Register(runtime)
 
@@ -223,7 +224,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 // send to construct
 // compare result
 // if it's different send update to controller
-func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
+/*func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
 	controllerObjectID := ctx.Self.ID
 	slog.Info("Update controller object", "id", controllerObjectID)
 
@@ -338,6 +339,127 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 		}
 	}
 	// ------------------------------------------------------------------------
+}*/
+
+// fetch declaration from controller
+// send to construct
+// compare result
+// if it's different send update to controller
+func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
+	controllerObjectID := ctx.Self.ID
+	slog.Info("Update controller object", "id", controllerObjectID)
+
+	var body *easyjson.JSON
+	var parentControllerID string
+	var realObjectID string
+
+	// -----------------------------------------
+	if controllerObjectBody := ctx.Payload.GetByPath("controllerObjectBody"); controllerObjectBody.IsNonEmptyObject() {
+		body = ctx.GetObjectContext()
+		parentUUID := body.GetByPath("parent").AsStringDefault("")
+		objectUUID := body.GetByPath("object_id").AsStringDefault("")
+
+		if len(parentUUID) == 0 || len(objectUUID) == 0 {
+			parentUUID = controllerObjectBody.GetByPath("parent").AsStringDefault("")
+			objectUUID = controllerObjectBody.GetByPath("object_id").AsStringDefault("")
+			cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
+
+			if err := cmdb.ObjectCreate(controllerObjectID, inStatefun.CONTROLLER_OBJECT_TYPE, controllerObjectBody); err != nil {
+				if !common.ErrorAlreadyExists(err) {
+					slog.Warn("failed to create controller object", "err", err.Error())
+					return
+				}
+			}
+
+			if err := cmdb.ObjectsLinkCreate(controllerObjectID, objectUUID, "uiapplib_"+objectUUID, []string{}); err != nil {
+				if !common.ErrorAlreadyExists(err) {
+					slog.Warn("failed to create objects link between controller object and uuid", "err", err.Error())
+					return
+				}
+			}
+
+			if err := cmdb.ObjectsLinkCreate(parentUUID, controllerObjectID, controllerObjectID, []string{}); err != nil {
+				if !common.ErrorAlreadyExists(err) {
+					slog.Warn("failed to create objects link between controller and controller object", "err", err.Error())
+					return
+				}
+			}
+			body = &controllerObjectBody
+		}
+		parentControllerID = parentUUID
+		realObjectID = objectUUID
+	} else {
+		body = ctx.GetObjectContext()
+		parentUUID, ok := body.GetByPath("parent").AsString()
+		if !ok {
+			slog.Warn("empty controller id")
+			return
+		}
+		parentControllerID = parentUUID
+		realObjectID = body.GetByPath("object_id").AsStringDefault("")
+	}
+	// -----------------------------------------
+
+	controllerBody, err := ctx.Domain.Cache().GetValueAsJSON(parentControllerID)
+	if err != nil {
+		slog.Error(err.Error())
+		return
+	}
+
+	controllerDeclaration := controllerBody.GetByPath(_CONTROLLER_DECLARATION)
+
+	result, err := ctx.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_CONSTRUCT, realObjectID, &controllerDeclaration, nil)
+	if err != nil {
+		result = easyjson.NewJSONObject().GetPtr()
+	}
+
+	if !result.IsNonEmptyObject() {
+		return
+	}
+
+	newResult := *result
+
+	forceUpdateSessionId := ctx.Payload.GetByPath("force_update_session_id").AsStringDefault("")
+	if len(forceUpdateSessionId) == 0 && checkUpdates {
+		oldResult := body.GetByPath("result")
+
+		if oldResult.Equals(newResult) {
+			return
+		}
+	}
+
+	body.SetByPath("result", newResult)
+	ctx.SetObjectContext(body)
+
+	// send update to controller subs -----------------------------------------
+	controllerPlugin, _ := controllerBody.GetByPath("plugin").AsString()
+
+	isShadowObjectInDomain := controllerBody.GetByPath("is_shadow_object_in_domain").AsStringDefault("")
+	replyObjectId := realObjectID
+	if len(isShadowObjectInDomain) > 0 {
+		replyObjectId = ctx.Domain.CreateCustomShadowId(isShadowObjectInDomain, ctx.Domain.Name(), ctx.Domain.GetObjectIDWithoutDomain(realObjectID))
+	}
+	path := fmt.Sprintf("payload.plugins.%s.%s", controllerPlugin, replyObjectId)
+
+	updateReply := easyjson.NewJSONObject()
+	updateReply.SetByPath(path, newResult)
+
+	subscribers := getChildrenUUIDSByLinkTypeLocal(ctx, parentControllerID, inStatefun.SUBSCRIBER_TYPE)
+
+	if len(forceUpdateSessionId) == 0 {
+		slog.Info("Send update to subscribers", "subscribers", subscribers)
+		for _, subID := range subscribers {
+			if err := egress.SendToSessionEgress(ctx, subID, &updateReply); err != nil {
+				slog.Warn(err.Error())
+			}
+		}
+	} else {
+		slog.Info("Send update to force update requested session only", "subscribers", subscribers)
+		if err := egress.SendToSessionEgress(ctx, forceUpdateSessionId, &updateReply); err != nil {
+			slog.Warn(err.Error())
+		}
+	}
+	// ------------------------------------------------------------------------
 }
 
 func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugins.StatefunContextProcessor) {
@@ -378,7 +500,7 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 
 @function:getChildren(linkType) - now
 */
-/*func ControllerConstruct(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
+func ControllerConstruct(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
 	id := ctx.Self.ID
 	payload := ctx.Payload
 
@@ -386,15 +508,20 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 
 	construct := easyjson.NewJSONObject()
 
-	for key, d := range decorators {
-		result := d.Decorate(ctx)
-		construct.SetByPath(key, result)
+	db := common.MustDBClient(ctx.Request)
+	if data, err := db.Graph.VertexRead(id, false); err == nil {
+		for key, d := range decorators {
+			result := d.Decorate(&db, &data)
+			construct.SetByPath(key, result)
+		}
+	} else {
+		common.Reply(ctx, "error", construct)
 	}
 
 	common.Reply(ctx, "ok", construct)
-}*/
+}
 
-func ControllerConstruct(ctx *sfplugins.StatefunContextProcessor, realObjectId string, controllerDeclaration *easyjson.JSON) (*easyjson.JSON, error) {
+/*func ControllerConstruct(ctx *sfplugins.StatefunContextProcessor, realObjectId string, controllerDeclaration *easyjson.JSON) (*easyjson.JSON, error) {
 	decorators := parseDecorators(realObjectId, controllerDeclaration)
 
 	construct := easyjson.NewJSONObject()
@@ -410,7 +537,7 @@ func ControllerConstruct(ctx *sfplugins.StatefunContextProcessor, realObjectId s
 	}
 
 	return &construct, nil
-}
+}*/
 
 func ClearController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
 	return

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"strings"
+	"sync"
 
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/clients/go/db"
@@ -14,17 +15,42 @@ import (
 
 const egressDelim = "="
 
+var (
+	sessionID2ClientIDCache sync.Map
+)
+
 func SendToSessionEgress(ctx *sf.StatefunContextProcessor, sessionID string, payload *easyjson.JSON) error {
 	cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
 
-	session, err := cmdb.ObjectRead(sessionID)
-	if err != nil {
-		return err
-	}
+	var clientID string
+	if value, ok := sessionID2ClientIDCache.Load(sessionID); ok {
+		clientID = value.(string)
+	} else {
+		// sessionID2ClientIDCache size control ---------------------
+		cacheLength := 0
+		sessionID2ClientIDCache.Range(func(key, value any) bool {
+			cacheLength++
+			return true
+		})
+		if cacheLength > 1000 {
+			sessionID2ClientIDCache.Range(func(key, value any) bool {
+				sessionID2ClientIDCache.Delete(key)
+				return true
+			})
+		}
+		// ----------------------------------------------------------
 
-	clientID, ok := session.GetByPath("body.client_id").AsString()
-	if !ok {
-		return err
+		session, err := cmdb.ObjectRead(sessionID)
+		if err != nil {
+			return err
+		}
+
+		cid, ok := session.GetByPath("body.client_id").AsString()
+		if !ok {
+			return err
+		}
+		clientID = cid
+		sessionID2ClientIDCache.Store(sessionID, clientID)
 	}
 
 	return ctx.Signal(sf.AutoSignalSelect, inStatefun.EGRESS, generateEgressID(clientID), payload, nil)

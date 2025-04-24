@@ -14,6 +14,7 @@ const (
 	CONTROLLER_START          = "functions.ui.app.controller.start"
 	CONTROLLER_CLEAR          = "functions.ui.app.controller.clear"
 	CONTROLLER_OBJECT_UPDATE  = "functions.ui.app.controller.object.update"
+	CONTROLLER_CONSTRUCT      = "functions.ui.app.controller.construct"
 	CONTROLLER_OBJECT_TRIGGER = "functions.ui.app.controller.object.trigger"
 
 	TYPES_NAVIGATION_DECORATOR   = "functions.ui.app.decorator.types.navigation"

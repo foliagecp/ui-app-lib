@@ -506,19 +506,28 @@ func ControllerConstruct(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunCo
 
 	decorators := parseDecorators(id, payload)
 
-	construct := easyjson.NewJSONObject()
+	construct := easyjson.NewJSONObject().GetPtr()
 
 	db := common.MustDBClient(ctx.Request)
 	if data, err := db.Graph.VertexRead(id, false); err == nil {
+		var mu sync.Mutex
+		var wg sync.WaitGroup
 		for key, d := range decorators {
-			result := d.Decorate(&db, &data)
-			construct.SetByPath(key, result)
+			wg.Add(1)
+			go func(key string, d controllerDecorator) {
+				result := d.Decorate(&db, &data)
+				mu.Lock()
+				construct.SetByPath(key, result)
+				mu.Unlock()
+				wg.Add(-1)
+			}(key, d)
+			wg.Wait()
 		}
 	} else {
-		common.Reply(ctx, "error", construct)
+		common.Reply(ctx, "error", easyjson.NewJSONObject())
 	}
 
-	common.Reply(ctx, "ok", construct)
+	common.Reply(ctx, "ok", *construct)
 }
 
 /*func ControllerConstruct(ctx *sfplugins.StatefunContextProcessor, realObjectId string, controllerDeclaration *easyjson.JSON) (*easyjson.JSON, error) {

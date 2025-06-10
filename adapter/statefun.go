@@ -361,8 +361,8 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 		/*linkCacheStr := parentUUID + "+"
 		body.GetByPath("link_cache")*/
 
-		parentControllerID := body.GetByPath("parent").AsStringDefault("")
-		realObjectID := body.GetByPath("object_id").AsStringDefault("")
+		parentControllerID = body.GetByPath("parent").AsStringDefault("")
+		realObjectID = body.GetByPath("object_id").AsStringDefault("")
 
 		if len(parentControllerID) == 0 || len(realObjectID) == 0 {
 			parentControllerID = controllerObjectBody.GetByPath("parent").AsStringDefault("")

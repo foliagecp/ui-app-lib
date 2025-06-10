@@ -428,20 +428,23 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 		if !result.IsNonEmptyObject() {
 			return
 		}
-
 		newResult := result.GetByPath("result")
+
+		updateIsNotNeeded := false
+		if len(forceUpdateSessionId) == 0 && checkUpdates {
+			oldResult := body.GetByPath("result")
+			if oldResult.Equals(newResult) {
+				updateIsNotNeeded = true
+			}
+		}
 
 		body.SetByPath("result", newResult)
 		body.SetByPath("cached_real_object_body_hash", easyjson.NewJSON(realObjectDataHash))
 
 		ctx.SetObjectContext(body)
 
-		if len(forceUpdateSessionId) == 0 && checkUpdates {
-			oldResult := body.GetByPath("result")
-
-			if oldResult.Equals(newResult) {
-				return
-			}
+		if updateIsNotNeeded {
+			return
 		}
 	}
 	newResult := body.GetByPath("result")

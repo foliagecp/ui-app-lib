@@ -425,12 +425,17 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 		if err != nil {
 			result = easyjson.NewJSONObject().GetPtr()
 		}
-
 		if !result.IsNonEmptyObject() {
 			return
 		}
 
 		newResult := result.GetByPath("result")
+
+		body.SetByPath("result", newResult)
+		body.SetByPath("cached_real_object_body_hash", easyjson.NewJSON(realObjectDataHash))
+
+		ctx.SetObjectContext(body)
+
 		if len(forceUpdateSessionId) == 0 && checkUpdates {
 			oldResult := body.GetByPath("result")
 
@@ -438,11 +443,6 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 				return
 			}
 		}
-
-		body.SetByPath("result", newResult)
-		body.SetByPath("cached_real_object_body_hash", easyjson.NewJSON(realObjectDataHash))
-
-		ctx.SetObjectContext(body)
 	}
 	newResult := body.GetByPath("result")
 

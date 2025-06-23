@@ -10,6 +10,7 @@ import (
 	"github.com/foliagecp/sdk/embedded/graph/crud"
 	"github.com/foliagecp/sdk/statefun"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
+	"github.com/foliagecp/sdk/statefun/system"
 	"github.com/foliagecp/sdk/statefun/test"
 	"github.com/foliagecp/ui-app-lib/adapter"
 	"github.com/foliagecp/ui-app-lib/internal/generate"
@@ -75,7 +76,7 @@ func (s *adapterTestSuite) Test_StartController_Correct() {
 	s.Require().NoError(err)
 
 	for _, v := range uuids {
-		cmdb.ObjectCreate(v, "test_uuid", easyjson.NewJSONObjectWithKeyValue("key", easyjson.NewJSON("value")))
+		system.MsgOnErrorReturn(cmdb.ObjectCreate(v, "test_uuid", easyjson.NewJSONObjectWithKeyValue("key", easyjson.NewJSON("value"))))
 	}
 
 	payload := easyjson.NewJSONObject()
@@ -130,15 +131,15 @@ func (s *adapterTestSuite) Test_ControllerObjectTrigger_Correct() {
 	cmdb, err := db.NewCMDBSyncClientFromRequestFunction(s.Request)
 	s.Require().NoError(err)
 
-	cmdb.TypeCreate("uuid_type")
-	cmdb.ObjectCreate("uuid_1", "uuid_type")
-	cmdb.TypesLinkCreate(inStatefun.CONTROLLER_OBJECT_TYPE, "uuid_type", inStatefun.CONTROLLER_SUBJECT_TYPE, []string{})
-	cmdb.TriggerObjectSet("uuid_type", db.UpdateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+	system.MsgOnErrorReturn(cmdb.TypeCreate("uuid_type"))
+	system.MsgOnErrorReturn(cmdb.ObjectCreate("uuid_1", "uuid_type"))
+	system.MsgOnErrorReturn(cmdb.TypesLinkCreate(inStatefun.CONTROLLER_OBJECT_TYPE, "uuid_type", inStatefun.CONTROLLER_SUBJECT_TYPE, []string{}))
+	system.MsgOnErrorReturn(cmdb.TriggerObjectSet("uuid_type", db.UpdateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER))
 
-	cmdb.ObjectCreate("ctrl_object_1", inStatefun.CONTROLLER_OBJECT_TYPE)
-	cmdb.ObjectsLinkCreate("ctrl_object_1", "uuid_1", "uuid_1", []string{})
+	system.MsgOnErrorReturn(cmdb.ObjectCreate("ctrl_object_1", inStatefun.CONTROLLER_OBJECT_TYPE))
+	system.MsgOnErrorReturn(cmdb.ObjectsLinkCreate("ctrl_object_1", "uuid_1", "uuid_1", []string{}))
 
-	cmdb.ObjectUpdate("uuid_1", easyjson.NewJSONObjectWithKeyValue("key", easyjson.NewJSON("value")), true)
+	system.MsgOnErrorReturn(cmdb.ObjectUpdate("uuid_1", easyjson.NewJSONObjectWithKeyValue("key", easyjson.NewJSON("value")), true))
 
 	time.Sleep(1 * time.Second)
 }
@@ -155,7 +156,7 @@ func (s *adapterTestSuite) Test_ConstructController_Correct() {
 	cmdb, err := db.NewCMDBSyncClientFromRequestFunction(s.Request)
 	s.Require().NoError(err)
 
-	cmdb.TypeCreate("test_uuid")
+	system.MsgOnErrorReturn(cmdb.TypeCreate("test_uuid"))
 
 	objectBody := easyjson.NewJSONObject()
 	objectBody.SetByPath("key", easyjson.NewJSON("value"))

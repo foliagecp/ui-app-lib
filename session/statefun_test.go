@@ -10,6 +10,7 @@ import (
 	"github.com/foliagecp/sdk/embedded/graph/crud"
 	"github.com/foliagecp/sdk/statefun"
 	"github.com/foliagecp/sdk/statefun/plugins"
+	"github.com/foliagecp/sdk/statefun/system"
 	"github.com/foliagecp/sdk/statefun/test"
 	"github.com/foliagecp/ui-app-lib/adapter"
 	"github.com/foliagecp/ui-app-lib/internal/generate"
@@ -48,7 +49,7 @@ func (s *sessionTestSuite) Test_Ingress_SendSignal_Code() {
 	cfg := *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1)
 
 	s.RegisterFunction(typename, session.Ingress, cfg)
-	s.StartRuntime()
+	system.MsgOnErrorReturn(s.StartRuntime())
 
 	clientID := uuid.New()
 	payload := easyjson.NewJSONObject()
@@ -62,7 +63,7 @@ func (s *sessionTestSuite) Test_Ingress_SendSignal_Client() {
 	cfg := *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1)
 
 	s.RegisterFunction(typename, session.Ingress, cfg)
-	s.StartRuntime()
+	system.MsgOnErrorReturn(s.StartRuntime())
 
 	clientID := uuid.New().String()
 
@@ -78,7 +79,7 @@ func (s *sessionTestSuite) Test_SessionRouter_EmptyCommand() {
 	cfg := *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1)
 
 	s.RegisterFunction(typename, session.SessionRouter, cfg)
-	s.StartRuntime()
+	system.MsgOnErrorReturn(s.StartRuntime())
 
 	clientID := uuid.New().String()
 	sessionID := generate.SessionID(clientID).String()
@@ -95,7 +96,7 @@ func (s *sessionTestSuite) Test_SessionRouter_InvalidCommand() {
 	cfg := *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1)
 
 	s.RegisterFunction(typename, session.SessionRouter, cfg)
-	s.StartRuntime()
+	system.MsgOnErrorReturn(s.StartRuntime())
 
 	clientID := uuid.New().String()
 	sessionID := generate.SessionID(clientID).String()
@@ -113,7 +114,7 @@ func (s *sessionTestSuite) Test_SessionRouter_StartSession_Correct() {
 	cfg := *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1)
 
 	s.RegisterFunction(typename, session.SessionRouter, cfg)
-	s.StartRuntime()
+	system.MsgOnErrorReturn(s.StartRuntime())
 
 	clientID := uuid.New().String()
 	sessionID := generate.SessionID(clientID).String()
@@ -131,7 +132,7 @@ func (s *sessionTestSuite) Test_SessionRouter_Controllers_Correct() {
 	cfg := *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1)
 
 	s.RegisterFunction(typename, session.SessionRouter, cfg)
-	s.StartRuntime()
+	system.MsgOnErrorReturn(s.StartRuntime())
 
 	clientID := uuid.New().String()
 	sessionID := generate.SessionID(clientID).String()
@@ -163,7 +164,7 @@ func (s *sessionTestSuite) Test_StartSession_Correct() {
 	// -----------------------------------------
 
 	s.RegisterFunction(typename, session.StartSession, cfg)
-	s.StartRuntime()
+	system.MsgOnErrorReturn(s.StartRuntime())
 
 	clientID := uuid.New().String()
 	sessionID := generate.SessionID(clientID).String()
@@ -177,7 +178,9 @@ func (s *sessionTestSuite) Test_StartSession_Correct() {
 	sub, err := s.SubscribeEgress(inStatefun.EGRESS, clientID)
 	s.Require().NoError(err)
 
-	defer sub.Unsubscribe()
+	defer func() {
+		system.MsgOnErrorReturn(sub.Unsubscribe())
+	}()
 
 	msg, err := sub.NextMsg(5 * time.Second)
 	s.Require().NoError(err)
@@ -210,7 +213,7 @@ func (s *sessionTestSuite) Test_StartController_Correct() {
 	clientID := "1"
 	sessionID := generate.SessionID(clientID).String()
 
-	cmdb.ObjectCreate(sessionID, inStatefun.SESSION_TYPE, easyjson.NewJSONObjectWithKeyValue("client_id", easyjson.NewJSON(clientID)))
+	system.MsgOnErrorReturn(cmdb.ObjectCreate(sessionID, inStatefun.SESSION_TYPE, easyjson.NewJSONObjectWithKeyValue("client_id", easyjson.NewJSON(clientID))))
 
 	plugin := map[string]map[string]session.Controller{
 		"viewer": {

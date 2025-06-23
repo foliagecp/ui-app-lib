@@ -147,7 +147,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 	cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
 
 	if err := cmdb.ObjectCreate(self.ID, inStatefun.CONTROLLER_TYPE, *body); err != nil {
-		cmdb.ObjectUpdate(self.ID, *body, true)
+		system.MsgOnErrorReturn(cmdb.ObjectUpdate(self.ID, *body, true))
 	}
 
 	if err := cmdb.ObjectsLinkCreate(self.ID, caller.ID, caller.ID, []string{}); err != nil {
@@ -186,8 +186,8 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 		}
 	}
 
-	cmdb.TriggerObjectSet(objectType, db.UpdateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
-	cmdb.TriggerObjectSet(objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+	system.MsgOnErrorReturn(cmdb.TriggerObjectSet(objectType, db.UpdateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER))
+	system.MsgOnErrorReturn(cmdb.TriggerObjectSet(objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER))
 
 	if typeData, err := cmdb.TypeRead(objectType); err == nil {
 		linksIn := typeData.GetByPath("links.in")
@@ -196,8 +196,8 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 			if linkData.GetByPath("name").AsStringDefault("") == objectType { // link from other type
 				fromId := linkData.GetByPath("from").AsStringDefault("")
 				if len(fromId) > 0 && ctx.Domain.GetObjectIDWithoutDomain(fromId) != crud.BUILT_IN_TYPES {
-					cmdb.TriggerLinkSet(fromId, objectType, db.CreateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
-					cmdb.TriggerLinkSet(fromId, objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER)
+					system.MsgOnErrorReturn(cmdb.TriggerLinkSet(fromId, objectType, db.CreateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER))
+					system.MsgOnErrorReturn(cmdb.TriggerLinkSet(fromId, objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER))
 				}
 			}
 		}
@@ -216,7 +216,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 		payload := easyjson.NewJSONObjectWithKeyValue("force_update_session_id", easyjson.NewJSON(sessionId))
 		payload.SetByPath("controllerObjectBody", controllerObjectBody)
 		//ctx.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil) // Sync call for Golang direct call if possible (speedup?)
-		ctx.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil)
+		system.MsgOnErrorReturn(ctx.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil))
 	}
 }
 
@@ -482,7 +482,7 @@ func ControllerObjectTrigger(_ sfplugins.StatefunExecutor, ctxProcessor *sfplugi
 
 	cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctxProcessor.Request)
 	if ctxProcessor.Payload.GetByPath("trigger.link.delete.type").AsStringDefault("") == inStatefun.CONTROLLER_SUBJECT_TYPE {
-		cmdb.ObjectDelete(objectUUID)
+		system.MsgOnErrorReturn(cmdb.ObjectDelete(objectUUID))
 		return
 	}
 
@@ -564,5 +564,5 @@ func ControllerConstruct(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunCo
 }*/
 
 func ClearController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
-	return
+	//return
 }

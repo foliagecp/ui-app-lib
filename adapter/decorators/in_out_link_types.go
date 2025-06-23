@@ -82,12 +82,14 @@ func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 }
 
 func filterLinkType(lt string) bool {
-	// it means that certain link type related with internal
+	/*// it means that certain link type related with internal
 	if strings.HasPrefix(lt, "__") {
 		return false
 	}
 
 	// TODO: add more filters for crud link type
 
-	return true
+	return true*/
+
+	return !strings.HasPrefix(lt, "__")
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/foliagecp/sdk/statefun"
 	"github.com/foliagecp/sdk/statefun/logger"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
+	"github.com/foliagecp/sdk/statefun/system"
 	"github.com/foliagecp/ui-app-lib/adapter"
 	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 	"github.com/foliagecp/ui-app-lib/session"
@@ -46,7 +47,7 @@ func sessionsKeeper(runtime *statefun.Runtime) {
 			if err == nil {
 				updatedAt := int64(sdata.GetByPath("body.updated_at").AsNumericDefault(0))
 				if updatedAt+int64(sessionInactivityTimeout.Seconds()) < now {
-					runtime.Signal(sf.AutoSignalSelect, inStatefun.SESSION_CLOSE, sessionId, nil, nil)
+					system.MsgOnErrorReturn(runtime.Signal(sf.AutoSignalSelect, inStatefun.SESSION_CLOSE, sessionId, nil, nil))
 				} else {
 					stillOpenedSessionsUpdateTimes[sessionId] = updatedAt
 				}
@@ -67,7 +68,7 @@ func sessionsKeeper(runtime *statefun.Runtime) {
 			})
 
 			for i := 0; i < exceedingSessionsCount; i++ {
-				runtime.Signal(sf.AutoSignalSelect, inStatefun.SESSION_CLOSE, sessionIdsFromOldest2Newest[i], nil, nil)
+				system.MsgOnErrorReturn(runtime.Signal(sf.AutoSignalSelect, inStatefun.SESSION_CLOSE, sessionIdsFromOldest2Newest[i], nil, nil))
 			}
 		}
 		// --------------------------------------------------------------------

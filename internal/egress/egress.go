@@ -10,6 +10,7 @@ import (
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/clients/go/db"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
+	"github.com/foliagecp/sdk/statefun/system"
 	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 )
 
@@ -68,7 +69,8 @@ func ClientIDFromEgressID(id string) string {
 
 func generateEgressID(clientID string) string {
 	s := make([]byte, 5)
-	rand.Read(s)
+	_, err := rand.Read(s)
+	system.MsgOnErrorReturn(err)
 	hash := md5.Sum(s)
 	hex := hex.EncodeToString(hash[:])
 	return clientID + egressDelim + hex

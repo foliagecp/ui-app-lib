@@ -13,6 +13,7 @@ import (
 	"github.com/foliagecp/sdk/embedded/graph/crud"
 	"github.com/foliagecp/sdk/statefun"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
+	"github.com/foliagecp/sdk/statefun/system"
 	"github.com/foliagecp/ui-app-lib/internal/common"
 	"github.com/foliagecp/ui-app-lib/internal/egress"
 	"github.com/foliagecp/ui-app-lib/internal/generate"
@@ -102,7 +103,7 @@ func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		}
 		for _, domain := range ctx.Domain.GetWeakClusterDomains() {
 			objectIdForRoutingDomain := ctx.Domain.GetShadowObjectShadowId(ctx.Domain.CreateObjectIDWithDomain(domain, ctx.Self.ID, true))
-			ctx.Signal(sf.AutoSignalSelect, ctx.Self.Typename, objectIdForRoutingDomain, ctx.Payload, ctx.Options)
+			system.MsgOnErrorReturn(ctx.Signal(sf.AutoSignalSelect, ctx.Self.Typename, objectIdForRoutingDomain, ctx.Payload, ctx.Options))
 		}
 	}
 }
@@ -151,8 +152,8 @@ func SessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 	logger.Info("Forward to next route", "next", next)
 
-	ctx.Signal(sf.AutoSignalSelect, next, sessionID, payload, nil)
-	ctx.Signal(sf.AutoSignalSelect, inStatefun.SESSION_UPDATE_ACTIVITY, sessionID, nil, nil)
+	system.MsgOnErrorReturn(ctx.Signal(sf.AutoSignalSelect, next, sessionID, payload, nil))
+	system.MsgOnErrorReturn(ctx.Signal(sf.AutoSignalSelect, inStatefun.SESSION_UPDATE_ACTIVITY, sessionID, nil, nil))
 }
 
 func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
@@ -166,7 +167,7 @@ func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		response.SetByPath("status", easyjson.NewJSON("ok"))
 		response.SetByPath("message", easyjson.NewJSON("already started"))
 
-		egress.SendToSessionEgress(ctx, sessionID, easyjson.NewJSONObjectWithKeyValue("payload", response).GetPtr())
+		system.MsgOnErrorReturn(egress.SendToSessionEgress(ctx, sessionID, easyjson.NewJSONObjectWithKeyValue("payload", response).GetPtr()))
 
 		return
 	}
@@ -197,7 +198,7 @@ func StartSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	response.SetByPath("command", easyjson.NewJSON(START_SESSION))
 	response.SetByPath("status", easyjson.NewJSON("ok"))
 
-	egress.SendToSessionEgress(ctx, sessionID, easyjson.NewJSONObjectWithKeyValue("payload", response).GetPtr())
+	system.MsgOnErrorReturn(egress.SendToSessionEgress(ctx, sessionID, easyjson.NewJSONObjectWithKeyValue("payload", response).GetPtr()))
 }
 
 func UpdateSessionActivity(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
@@ -249,13 +250,13 @@ func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	}
 	// --------------------------------------------------------------------------------------------*/
 
-	cmdb.ObjectDelete(ctx.Self.ID)
+	system.MsgOnErrorReturn(cmdb.ObjectDelete(ctx.Self.ID))
 
 	response := easyjson.NewJSONObject()
 	response.SetByPath("command", easyjson.NewJSON(CLOSE_SESSION))
 	response.SetByPath("status", easyjson.NewJSON("ok"))
 
-	egress.SendToSessionEgress(ctx, sessionID, easyjson.NewJSONObjectWithKeyValue("payload", response).GetPtr())
+	system.MsgOnErrorReturn(egress.SendToSessionEgress(ctx, sessionID, easyjson.NewJSONObjectWithKeyValue("payload", response).GetPtr()))
 }
 
 func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
@@ -329,7 +330,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	response.SetByPath("command", easyjson.NewJSON(START_CONTROLLER))
 	response.SetByPath("status", easyjson.NewJSON("ok"))
 
-	egress.SendToSessionEgress(ctx, sessionID, easyjson.NewJSONObjectWithKeyValue("payload", response).GetPtr())
+	system.MsgOnErrorReturn(egress.SendToSessionEgress(ctx, sessionID, easyjson.NewJSONObjectWithKeyValue("payload", response).GetPtr()))
 }
 
 // find all controller objects
@@ -344,7 +345,7 @@ func ClearController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	response.SetByPath("command", easyjson.NewJSON(CLEAR_CONTROLLER))
 	response.SetByPath("status", easyjson.NewJSON("ok"))
 
-	egress.SendToSessionEgress(ctx, sessionID, easyjson.NewJSONObjectWithKeyValue("payload", response).GetPtr())
+	system.MsgOnErrorReturn(egress.SendToSessionEgress(ctx, sessionID, easyjson.NewJSONObjectWithKeyValue("payload", response).GetPtr()))
 }
 
 func Egress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {

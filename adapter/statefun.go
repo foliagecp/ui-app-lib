@@ -279,7 +279,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 	}
 	// -----------------------------------------
 
-	controllerBody, err := ctx.Domain.Cache().GetValueAsJSON(parentControllerID)
+	controllerBody, err := ctx.Domain.Cache().GetValueJSON(parentControllerID)
 	if err != nil {
 		slog.Error(err.Error())
 		return
@@ -403,7 +403,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	}
 	// -----------------------------------------
 
-	controllerBody, err := ctx.Domain.Cache().GetValueAsJSON(parentControllerID)
+	controllerBody, err := ctx.Domain.Cache().GetValueJSON(parentControllerID)
 	if err != nil {
 		slog.Error(err.Error())
 		return

@@ -530,19 +530,19 @@ func ControllerConstruct(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunCo
 		for key, d := range decorators {
 			wg.Add(1)
 			go func(key string, d controllerDecorator) {
+				defer wg.Done()
 				result := d.Decorate(&db, &data)
 				mu.Lock()
 				construct.SetByPath(key, result)
 				mu.Unlock()
-				wg.Add(-1)
 			}(key, d)
-			wg.Wait()
 		}
+		wg.Wait()
+
+		common.Reply(ctx, "ok", *construct)
 	} else {
 		common.Reply(ctx, "error", easyjson.NewJSONObject())
 	}
-
-	common.Reply(ctx, "ok", *construct)
 }
 
 /*func ControllerConstruct(ctx *sfplugins.StatefunContextProcessor, realObjectId string, controllerDeclaration *easyjson.JSON) (*easyjson.JSON, error) {

@@ -56,11 +56,11 @@ func controllerObjectOnTriggerWindowUpdater(runtime *statefun.Runtime) {
 }
 
 func RegisterFunctions(runtime *statefun.Runtime) {
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_START, StartController, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CLEAR, ClearController, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_UPDATE, UpdateControllerObject, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_TRIGGER, ControllerObjectTrigger, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CONSTRUCT, ControllerConstruct, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sfplugins.AutoRequestSelect))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_START, StartController, *statefun.NewFunctionTypeConfig().SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CLEAR, ClearController, *statefun.NewFunctionTypeConfig().SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_UPDATE, UpdateControllerObject, *statefun.NewFunctionTypeConfig().SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_TRIGGER, ControllerObjectTrigger, *statefun.NewFunctionTypeConfig().SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CONSTRUCT, ControllerConstruct, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sfplugins.AutoRequestSelect).SetIdChannelSize(100))
 
 	decorators.Register(runtime)
 
@@ -279,7 +279,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 	}
 	// -----------------------------------------
 
-	controllerBody, err := ctx.Domain.Cache().GetValueAsJSON(parentControllerID)
+	controllerBody, err := ctx.Domain.Cache().GetValueJSON(parentControllerID)
 	if err != nil {
 		slog.Error(err.Error())
 		return
@@ -403,7 +403,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	}
 	// -----------------------------------------
 
-	controllerBody, err := ctx.Domain.Cache().GetValueAsJSON(parentControllerID)
+	controllerBody, err := ctx.Domain.Cache().GetValueJSON(parentControllerID)
 	if err != nil {
 		slog.Error(err.Error())
 		return

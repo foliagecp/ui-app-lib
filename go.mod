@@ -3,8 +3,8 @@ module github.com/foliagecp/ui-app-lib
 go 1.21.1
 
 require (
-	github.com/foliagecp/easyjson v0.1.3
-	github.com/foliagecp/sdk v0.1.7-dev08072025
+	github.com/foliagecp/easyjson v0.1.6
+	github.com/foliagecp/sdk v0.1.7-cachejson-hotfix-2
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.9.0
 )
@@ -14,7 +14,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
-	github.com/google/pprof v0.0.0-20200229191704-1ebb73c60ed3 // indirect
+	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
 	github.com/klauspost/compress v1.17.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/minio/highwayhash v1.0.2 // indirect

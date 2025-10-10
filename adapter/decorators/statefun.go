@@ -8,9 +8,9 @@ import (
 )
 
 func Register(r *statefun.Runtime) {
-	statefun.NewFunctionType(r, inStatefun.TYPES_NAVIGATION_DECORATOR, typesNavigation, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sf.AutoRequestSelect).SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(r, inStatefun.IO_LINK_TYPES_DECORATOR, inOutLinkTypes, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sf.AutoRequestSelect).SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(r, inStatefun.LINKS_TYPE_DECORATOR, linksByType, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sf.AutoRequestSelect))
+	statefun.NewFunctionType(r, inStatefun.TYPES_NAVIGATION_DECORATOR, typesNavigation, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sf.AutoRequestSelect).SetMaxIdHandlers(-1).SetIdChannelSize(100))
+	statefun.NewFunctionType(r, inStatefun.IO_LINK_TYPES_DECORATOR, inOutLinkTypes, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sf.AutoRequestSelect).SetMaxIdHandlers(-1).SetIdChannelSize(100))
+	statefun.NewFunctionType(r, inStatefun.LINKS_TYPE_DECORATOR, linksByType, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sf.AutoRequestSelect).SetIdChannelSize(100))
 }
 
 func errResponse(ctx *sf.StatefunContextProcessor, msg string) {

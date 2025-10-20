@@ -95,7 +95,6 @@ func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 				cache.PublishCachedEgress(ctx, ctx.Caller.ID, cached.EgressPayloads)
 				return
 			}
-
 			cache.PrepareCollection(ctx.TraceID(), hash)
 		}
 

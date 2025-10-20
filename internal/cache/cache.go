@@ -155,11 +155,11 @@ func CollectEgress(payload *easyjson.JSON) {
 	entry.Mutex.Lock()
 	defer entry.Mutex.Unlock()
 
-	clone := payload.Clone().GetPtr()
+	clone := payload.GetByPath("payload")
 	clone.SetByPath("payload.cached", easyjson.NewJSON(true))
 	clone.SetByPath("payload.cache_timestamp", easyjson.NewJSON(time.Now().Unix()))
 
-	entry.Payloads = append(entry.Payloads, clone)
+	entry.Payloads = append(entry.Payloads, &clone)
 }
 
 func PublishCachedEgress(ctx *sf.StatefunContextProcessor, clientID string, egressPayloads []*easyjson.JSON) {

@@ -14,6 +14,7 @@ import (
 	"github.com/foliagecp/sdk/statefun"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/sdk/statefun/system"
+	"github.com/foliagecp/ui-app-lib/internal/cache"
 	"github.com/foliagecp/ui-app-lib/internal/common"
 	"github.com/foliagecp/ui-app-lib/internal/egress"
 	"github.com/foliagecp/ui-app-lib/internal/generate"
@@ -33,6 +34,8 @@ func RegisterFunctions(runtime *statefun.Runtime) {
 	statefun.NewFunctionType(runtime, inStatefun.SESSION_START_CONTROLLER, StartController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLEAR_CONTROLLER, ClearController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
 	statefun.NewFunctionType(runtime, inStatefun.EGRESS, Egress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+
+	cache.Init(runtime)
 
 	runtime.RegisterOnAfterStartFunction(InitSchema, false)
 }
@@ -85,6 +88,17 @@ Payload:
 */
 func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	if ctx.Caller.Typename == ctx.Self.Typename {
+		traceContext := ctx.TraceContext()
+		if traceContext != nil && cache.IsCacheable(ctx.Payload) {
+			hash := cache.Hash(ctx.Payload)
+			if cached := cache.Get(hash); cached != nil {
+				cache.PublishCachedEgress(ctx, ctx.Caller.ID, cached.EgressPayloads)
+				return
+			}
+
+			cache.PrepareCollection(ctx.TraceID(), hash)
+		}
+
 		id := ctx.Caller.ID
 		payload := ctx.Payload
 		sessionID := ctx.Domain.CreateObjectIDWithHubDomain(generate.SessionID(id).String(), false)

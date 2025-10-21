@@ -58,25 +58,27 @@ func PrepareCollection(traceID, hash string) bool {
 	uiCache.mu.Unlock()
 
 	entry := &PendingEntry{
-		TraceID:  traceID,
-		Hash:     hash,
-		Payloads: []*easyjson.JSON{},
+		TraceID:       traceID,
+		Hash:          hash,
+		Payloads:      []*easyjson.JSON{},
+		FirstEgressAt: time.Now(),
 	}
+
+	entry.Timer = time.AfterFunc(
+		time.Duration(uiCache.config.CollectTimeoutMS)*time.Millisecond,
+		func() { saveToCache(hash) },
+	)
 
 	_, loaded := uiCache.pending.LoadOrStore(hash, entry)
 
 	if loaded {
+		entry.Timer.Stop()
+
 		uiCache.mu.Lock()
 		delete(uiCache.correlator, traceID)
 		uiCache.mu.Unlock()
 		return false
 	}
-
-	entry.FirstEgressAt = time.Now()
-	entry.Timer = time.AfterFunc(
-		time.Duration(uiCache.config.CollectTimeoutMS)*time.Millisecond,
-		func() { saveToCache(hash) },
-	)
 
 	return true
 }

@@ -38,12 +38,13 @@ func Init(runtime *statefun.Runtime) {
 		return
 	}
 
+	nc := runtime.GetNatsConnection()
+
 	cache := &Cache{
 		correlator: make(map[string]string),
 		config:     config,
+		nc:         nc,
 	}
-
-	nc := runtime.GetNatsConnection()
 
 	sub, err := nc.Subscribe("egress.ui.>", func(msg *nats.Msg) {
 		cache.handleNatsMessage(msg)

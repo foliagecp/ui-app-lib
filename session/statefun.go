@@ -88,16 +88,6 @@ Payload:
 */
 func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	if ctx.Caller.Typename == ctx.Self.Typename {
-		traceContext := ctx.TraceContext()
-		if traceContext != nil && cache.IsCacheable(ctx.Payload) {
-			hash := cache.Hash(ctx.Payload)
-			if cached := cache.Get(hash); cached != nil {
-				cache.PublishCachedEgress(ctx, ctx.Caller.ID, cached.EgressPayloads)
-				return
-			}
-			cache.PrepareCollection(ctx.TraceID(), hash)
-		}
-
 		id := ctx.Caller.ID
 		payload := ctx.Payload
 		sessionID := ctx.Domain.CreateObjectIDWithHubDomain(generate.SessionID(id).String(), false)
@@ -110,6 +100,16 @@ func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			slog.Warn(err.Error())
 		}
 	} else { // Routing into ingresses of all weak cluster domains
+		traceContext := ctx.TraceContext()
+		if traceContext != nil && cache.IsCacheable(ctx.Payload) {
+			hash := cache.Hash(ctx.Payload)
+			if cached := cache.Get(hash); cached != nil {
+				cache.PublishCachedEgress(ctx.Caller.ID, cached.EgressPayloads)
+				return
+			}
+			cache.PrepareCollection(ctx.TraceID(), hash)
+		}
+
 		domains := ctx.Domain.GetWeakClusterDomains()
 		if len(domains) > 1 {
 			weakClustering = true

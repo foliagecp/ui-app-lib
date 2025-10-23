@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"hash/fnv"
 	"strconv"
 	"sync"
@@ -9,10 +10,7 @@ import (
 
 	"github.com/foliagecp/easyjson"
 	lg "github.com/foliagecp/sdk/statefun/logger"
-	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/sdk/statefun/system"
-	"github.com/foliagecp/ui-app-lib/internal/egress"
-	inStatefun "github.com/foliagecp/ui-app-lib/internal/statefun"
 	"github.com/nats-io/nats.go"
 )
 
@@ -27,6 +25,7 @@ type Cache struct {
 	mu           sync.RWMutex
 	config       *Config
 	subscription *nats.Subscription
+	nc           *nats.Conn
 }
 
 type CacheEntry struct {
@@ -41,11 +40,6 @@ type PendingEntry struct {
 	FirstEgressAt time.Time
 	Timer         *time.Timer
 	Mutex         sync.Mutex
-}
-
-type NatsEgressMessage struct {
-	TraceID string         `json:"trace_id"`
-	Payload *easyjson.JSON `json:"payload"`
 }
 
 func PrepareCollection(traceID, hash string) bool {
@@ -135,8 +129,17 @@ func CollectEgress(payload *easyjson.JSON) {
 		return
 	}
 
+	if payload.GetByPath("cached").AsBoolDefault(false) {
+		return
+	}
+
 	traceID := payload.GetByPath("__trace_context.trace_id").AsStringDefault("")
+
 	if traceID == "" {
+		return
+	}
+
+	if payload.PathExists("payload.command") {
 		return
 	}
 
@@ -157,17 +160,18 @@ func CollectEgress(payload *easyjson.JSON) {
 	entry.Mutex.Lock()
 	defer entry.Mutex.Unlock()
 
-	clone := payload.GetByPath("payload")
-	clone.SetByPath("payload.cached", easyjson.NewJSON(true))
-	clone.SetByPath("payload.cache_timestamp", easyjson.NewJSON(time.Now().Unix()))
+	clone := easyjson.NewJSONObject()
+	clone.SetByPath("payload", payload.GetByPath("payload"))
+	clone.SetByPath("cached", easyjson.NewJSON(true))
+	clone.SetByPath("cache_timestamp", easyjson.NewJSON(time.Now().Unix()))
 
 	entry.Payloads = append(entry.Payloads, &clone)
 }
 
-func PublishCachedEgress(ctx *sf.StatefunContextProcessor, clientID string, egressPayloads []*easyjson.JSON) {
+func PublishCachedEgress(clientID string, egressPayloads []*easyjson.JSON) {
 	for _, payload := range egressPayloads {
-		if err := ctx.Signal(sf.AutoSignalSelect, inStatefun.EGRESS, egress.GenerateEgressID(clientID), payload.GetPtr(), nil); err != nil {
-			lg.GetLogger().Warnf(context.TODO(), "publishCachedEgress error: %v", err)
+		if err := uiCache.nc.Publish(fmt.Sprintf("egress.ui.%s", clientID), payload.ToBytes()); err != nil {
+			lg.GetLogger().Errorf(context.TODO(), "publishCachedEgress error: %v", err)
 		}
 	}
 }

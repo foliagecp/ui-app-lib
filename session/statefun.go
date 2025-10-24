@@ -100,8 +100,7 @@ func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			slog.Warn(err.Error())
 		}
 	} else { // Routing into ingresses of all weak cluster domains
-		traceContext := ctx.TraceContext()
-		if traceContext != nil && cache.IsCacheable(ctx.Payload) {
+		if ctx.TraceContext() != nil && cache.IsCacheable(ctx.Payload) {
 			hash := cache.Hash(ctx.Payload)
 			if cached := cache.Get(hash); cached != nil {
 				cache.PublishCachedEgress(ctx.Caller.ID, cached.EgressPayloads)
@@ -362,6 +361,10 @@ func ClearController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 }
 
 func Egress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+	tc := ctx.GetTraceContext()
+	if tc != nil {
+		ctx.Payload.SetByPath("__trace_context", *tc)
+	}
 	if err := ctx.Egress(sf.NatsCoreEgress, ctx.Payload, egress.ClientIDFromEgressID(ctx.Self.ID)); err != nil {
 		slog.Warn(err.Error())
 	}

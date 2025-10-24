@@ -67,7 +67,6 @@ func PrepareCollection(traceID, hash string) bool {
 
 	if loaded {
 		entry.Timer.Stop()
-
 		uiCache.mu.Lock()
 		delete(uiCache.correlator, traceID)
 		uiCache.mu.Unlock()

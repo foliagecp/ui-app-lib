@@ -12,6 +12,11 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
+const (
+	EGRESS_UI_SUBSRIBE_WILDCARD = "egress.ui.>"
+	PERIODIC_CLEANER_TIMEOUT    = time.Minute * 1
+)
+
 var config *Config
 
 type Config struct {
@@ -24,9 +29,9 @@ type Config struct {
 func InitConfig() {
 	config = &Config{
 		Enabled:          system.GetEnvMustProceed("UI_APP_LIB_CACHE_ENABLED", true),
-		TTLSeconds:       system.GetEnvMustProceed("UI_APP_LIB_CACHE_TTL_SECONDS", 300),
+		TTLSeconds:       system.GetEnvMustProceed("UI_APP_LIB_CACHE_TTL_SECONDS", 600),
 		CollectTimeoutMS: system.GetEnvMustProceed("UI_APP_LIB_CACHE_COLLECT_TIMEOUT_MS", 10000),
-		MaxEntries:       system.GetEnvMustProceed("UI_APP_LIB_CACHE_MAX_ENTRIES", 10000),
+		MaxEntries:       system.GetEnvMustProceed("UI_APP_LIB_CACHE_MAX_ENTRIES", 1000),
 	}
 }
 
@@ -49,7 +54,7 @@ func Init(runtime *statefun.Runtime) {
 		nc:             nc,
 	}
 
-	sub, err := nc.Subscribe("egress.ui.>", func(msg *nats.Msg) {
+	sub, err := nc.Subscribe(EGRESS_UI_SUBSRIBE_WILDCARD, func(msg *nats.Msg) {
 		cache.handleNatsMessage(msg)
 	})
 	if err != nil {
@@ -63,13 +68,13 @@ func Init(runtime *statefun.Runtime) {
 
 	// start periodic cache cleaner
 	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
+		ticker := time.NewTicker(PERIODIC_CLEANER_TIMEOUT)
 		for range ticker.C {
 			if uiCache == nil {
 				continue
 			}
 			deleted, all := 0, 0
-			lg.GetLogger().Debugf(context.TODO(), ">>>>>>>>>>>>>>>>>>>>>>>>>>> start delete old entries from ui-cache >>>>>>>>>>>>>>>>>>>>>>>>>>>")
+			lg.GetLogger().Tracef(context.TODO(), ">>>>>>>>>>>>>>>>>>>>>>>>>>> start delete old entries from ui-cache >>>>>>>>>>>>>>>>>>>>>>>>>>>")
 			uiCache.cache.Range(func(key, value interface{}) bool {
 				entry := value.(*CacheEntry)
 				all++
@@ -79,10 +84,13 @@ func Init(runtime *statefun.Runtime) {
 				}
 				return true
 			})
-			lg.GetLogger().Debugf(context.TODO(), "<<<<<<<<<<<<<<<<<<<<<<<<<<<< finish delete old entries from ui-cache, all=%d, entries was deleted=%d <<<<<<<<<<<<<<<<<<<<<<<<<<<<", all, deleted)
+			if all-deleted > config.MaxEntries {
+				lg.GetLogger().Warnf(context.TODO(), "ui-cache reached MaxSize (%d), current count=%d", config.MaxEntries, all-deleted)
+			}
+			lg.GetLogger().Tracef(context.TODO(), "<<<<<<<<<<<<<<<<<<<<<<<<<<<< finish delete old entries from ui-cache, all=%d, entries was deleted=%d <<<<<<<<<<<<<<<<<<<<<<<<<<<<", all, deleted)
 
 			all, deleted = 0, 0
-			lg.GetLogger().Debugf(context.TODO(), ">>>>>>>>>>>>>>>>>>>>>>>>>>> start delete unactual entries from ui-cache-corellator >>>>>>>>>>>>>>>>>>>>>>>>>>>")
+			lg.GetLogger().Tracef(context.TODO(), ">>>>>>>>>>>>>>>>>>>>>>>>>>> start delete unactual entries from ui-cache-corellator >>>>>>>>>>>>>>>>>>>>>>>>>>>")
 			uiCache.correlatorMu.Lock()
 			for traceID := range uiCache.correlator {
 				all++
@@ -92,10 +100,10 @@ func Init(runtime *statefun.Runtime) {
 				}
 			}
 			uiCache.correlatorMu.Unlock()
-			lg.GetLogger().Debugf(context.TODO(), "<<<<<<<<<<<<<<<<<<<<<<<<<<<< finish delete unactual entries from ui-cache-corellator, all=%d, entries was deleted=%d <<<<<<<<<<<<<<<<<<<<<<<<<<<<", all, deleted)
+			lg.GetLogger().Tracef(context.TODO(), "<<<<<<<<<<<<<<<<<<<<<<<<<<<< finish delete unactual entries from ui-cache-corellator, all=%d, entries was deleted=%d <<<<<<<<<<<<<<<<<<<<<<<<<<<<", all, deleted)
 
 			all, deleted = 0, 0
-			lg.GetLogger().Debugf(context.TODO(), ">>>>>>>>>>>>>>>>>>>>>>>>>>> start delete unactual entries from ui-cache-egress-payloads >>>>>>>>>>>>>>>>>>>>>>>>>>>")
+			lg.GetLogger().Tracef(context.TODO(), ">>>>>>>>>>>>>>>>>>>>>>>>>>> start delete unactual entries from ui-cache-egress-payloads >>>>>>>>>>>>>>>>>>>>>>>>>>>")
 			uiCache.egressPayloadsMu.Lock()
 			for controllerOID := range uiCache.egressPayloads {
 				all++
@@ -116,7 +124,7 @@ func Init(runtime *statefun.Runtime) {
 				}
 			}
 			uiCache.egressPayloadsMu.Unlock()
-			lg.GetLogger().Debugf(context.TODO(), "<<<<<<<<<<<<<<<<<<<<<<<<<<<< finish delete unactual entries from ui-cache-egress-payloads, all=%d, entries was deleted=%d <<<<<<<<<<<<<<<<<<<<<<<<<<<<", all, deleted)
+			lg.GetLogger().Tracef(context.TODO(), "<<<<<<<<<<<<<<<<<<<<<<<<<<<< finish delete unactual entries from ui-cache-egress-payloads, all=%d, entries was deleted=%d <<<<<<<<<<<<<<<<<<<<<<<<<<<<", all, deleted)
 		}
 	}()
 

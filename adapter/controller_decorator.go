@@ -59,16 +59,16 @@ func (c *controllerFunction) Decorate(db *db.DBSyncClient, _ *easyjson.JSON) eas
 		}
 
 		children := getChildrenUUIDSByLinkTypeRemote(db, c.id, lt)
-		return easyjson.JSONFromArray(children)
+		return easyjson.NewJSON(children)
 	case "getFromJPGQL":
 		query := ""
 		if len(c.args) > 0 {
 			query = c.args[0]
 		}
 		if uuids, err := db.Query.JPGQLCtraQuery(c.id, query); err == nil {
-			return easyjson.JSONFromArray(uuids)
+			return easyjson.NewJSON(uuids)
 		}
-		return easyjson.JSONFromArray([]string{})
+		return easyjson.NewJSON([]string{})
 	case "getFromFPLInBase64":
 		query := ""
 		if len(c.args) > 0 {
@@ -96,15 +96,15 @@ func (c *controllerFunction) Decorate(db *db.DBSyncClient, _ *easyjson.JSON) eas
 				}
 			}
 			// --------------------------------------------------------------------------
-			return easyjson.JSONFromArray(uuids)
+			return easyjson.NewJSON(uuids)
 		}
-		return easyjson.JSONFromArray([]string{})
+		return easyjson.NewJSON([]string{})
 	case "getInOutLinkTypes":
 		out := getInOutLinkTypes(db, c.id)
-		return easyjson.JSONFromArray(out)
+		return easyjson.NewJSON(out)
 	case "getOutLinkTypes":
 		out := getOutLinkTypes(db, c.id)
-		return easyjson.JSONFromArray(out)
+		return easyjson.NewJSON(out)
 	case "getLinksByType":
 		if len(c.args) != 1 {
 			return easyjson.NewJSON("invalid arguments")

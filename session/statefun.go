@@ -297,7 +297,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			payload := easyjson.NewJSONObject()
 			payload.SetByPath("plugin", easyjson.NewJSON(plugin))
 			payload.SetByPath("declaration", body)
-			payload.SetByPath("uuids", easyjson.JSONFromArray(controller.UUIDs))
+			payload.SetByPath("uuids", easyjson.NewJSON(controller.UUIDs))
 			payload.SetByPath("session_id", easyjson.NewJSON(sessionID))
 			payload.SetByPath("is_shadow_object_in_domain", easyjson.NewJSON(isShadowObjectInDomain))
 			payload.SetByPath("name", easyjson.NewJSON(name))

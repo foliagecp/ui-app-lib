@@ -77,8 +77,8 @@ func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	}
 
 	resp := easyjson.NewJSONObject()
-	resp.SetByPath("in", easyjson.JSONFromArray(in))
-	resp.SetByPath("out", easyjson.JSONFromArray(out))
+	resp.SetByPath("in", easyjson.NewJSON(in))
+	resp.SetByPath("out", easyjson.NewJSON(out))
 	okResponse(ctx, resp)
 }
 

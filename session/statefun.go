@@ -12,6 +12,7 @@ import (
 	"github.com/foliagecp/sdk/clients/go/db"
 	"github.com/foliagecp/sdk/embedded/graph/crud"
 	"github.com/foliagecp/sdk/statefun"
+	lg "github.com/foliagecp/sdk/statefun/logger"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/sdk/statefun/system"
 	"github.com/foliagecp/ui-app-lib/internal/cache"
@@ -103,10 +104,12 @@ func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		if ctx.TraceContext() != nil && cache.IsCacheable(ctx.Payload) {
 			hash := cache.Hash(ctx.Payload)
 			if cached := cache.Get(hash); cached != nil {
-				cache.PublishCachedEgress(ctx.Caller.ID, cached.EgressPayloads)
+				lg.GetLogger().Tracef(context.TODO(), ":::::::::::cache hit, request hash=%s", hash)
+				cache.PublishCachedEgress(ctx.Self.ID, cached.ControllerOIDs)
 				return
 			}
-			cache.PrepareCollection(ctx.TraceID(), hash)
+			lg.GetLogger().Tracef(context.TODO(), ":::::::::::cache miss, request hash=%s", hash)
+			cache.PrepareCollection(ctx, hash)
 		}
 
 		domains := ctx.Domain.GetWeakClusterDomains()
@@ -361,9 +364,13 @@ func ClearController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 }
 
 func Egress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
-	tc := ctx.GetTraceContext()
-	if tc != nil {
-		ctx.Payload.SetByPath("__trace_context", *tc)
+	if !ctx.Payload.PathExists("payload.command") || !cache.Enabled() { // ignore command messages
+		tc := ctx.GetTraceContext()
+		if tc != nil {
+			ctx.Payload.SetByPath("__trace_context", *tc)
+		}
+		ctx.Payload.SetByPath("__caller_id", easyjson.NewJSON(ctx.Caller.ID))
+		cache.LinkTraceIDAndControllerOID(ctx.TraceID(), ctx.Caller.ID)
 	}
 	if err := ctx.Egress(sf.NatsCoreEgress, ctx.Payload, egress.ClientIDFromEgressID(ctx.Self.ID)); err != nil {
 		slog.Warn(err.Error())

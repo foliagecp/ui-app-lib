@@ -1,11 +1,12 @@
 package decorators
 
 import (
+	"context"
 	"encoding/json"
-	"log/slog"
 	"sort"
 
 	"github.com/foliagecp/sdk/embedded/graph/crud"
+	"github.com/foliagecp/sdk/statefun/logger"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/ui-app-lib/internal/common"
 )
@@ -133,7 +134,7 @@ func typesNavigation(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			if ok := typeBody.PathExists("object_ids"); ok {
 				var typeObjects []string
 				if err := json.Unmarshal(typeBody.GetByPath("object_ids").ToBytes(), &typeObjects); err != nil {
-					slog.Warn(err.Error())
+					logger.GetLogger().Warn(context.TODO(), err.Error())
 				}
 
 				for _, v := range typeObjects {
@@ -239,7 +240,7 @@ func inOutTypes(ctx *sf.StatefunContextProcessor, id string) []string {
 
 			link, err := db.CMDB.TypesLinkRead(objectID, id)
 			if err != nil {
-				slog.Error(err.Error())
+				logger.GetLogger().Error(context.TODO(), err.Error())
 				continue
 			}
 

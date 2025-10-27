@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/clients/go/db"
 	"github.com/foliagecp/sdk/embedded/graph/crud"
 	"github.com/foliagecp/sdk/statefun"
+	"github.com/foliagecp/sdk/statefun/logger"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/sdk/statefun/system"
 	"github.com/foliagecp/ui-app-lib/internal/common"
@@ -89,12 +89,12 @@ func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		payload := ctx.Payload
 		sessionID := ctx.Domain.CreateObjectIDWithHubDomain(generate.SessionID(id).String(), false)
 
-		slog.Info("Receive msg", "from", id, "session_id", sessionID)
+		logger.GetLogger().Infof(context.TODO(), "Receive msg from=%s, session_id=%s", id, sessionID)
 
 		payload.SetByPath("client_id", easyjson.NewJSON(id))
 
 		if err := ctx.Signal(sf.AutoSignalSelect, inStatefun.SESSION_ROUTER, sessionID, payload, nil); err != nil {
-			slog.Warn(err.Error())
+			logger.GetLogger().Warn(context.TODO(), err.Error())
 		}
 	} else { // Routing into ingresses of all weak cluster domains
 		domains := ctx.Domain.GetWeakClusterDomains()
@@ -131,7 +131,7 @@ var routes = map[Command]string{
 func SessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
 	payload := ctx.Payload
-	logger := slog.With("session_id", sessionID)
+	lg := logger.GetLogger().With(map[string]interface{}{"session_id": sessionID})
 
 	var command Command
 
@@ -146,11 +146,11 @@ func SessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 	next, ok := routes[command]
 	if !ok {
-		logger.Warn("Command not found", "command", command)
+		lg.Warnf(context.TODO(), "Command not found, command=%s", command)
 		return
 	}
 
-	logger.Info("Forward to next route", "next", next)
+	lg.Infof(context.TODO(), "Forward to next route, next=%s", next)
 
 	system.MsgOnErrorReturn(ctx.Signal(sf.AutoSignalSelect, next, sessionID, payload, nil))
 	system.MsgOnErrorReturn(ctx.Signal(sf.AutoSignalSelect, inStatefun.SESSION_UPDATE_ACTIVITY, sessionID, nil, nil))
@@ -218,12 +218,12 @@ func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 	/*dbc, err := db.NewDBSyncClientFromRequestFunction(ctx.Request)
 	if err != nil {
-		slog.Error(err.Error())
+		logger.GetLogger().Error(context.TODO(), err.Error())
 		return
 	}*/
 	cmdb, err := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
 	if err != nil {
-		slog.Error(err.Error())
+		logger.GetLogger().Error(context.TODO(), err.Error())
 		return
 	}
 
@@ -265,7 +265,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	for _, plugin := range ctx.Payload.ObjectKeys() {
 		var controllers map[string]Controller
 		if err := json.Unmarshal(ctx.Payload.GetByPath(plugin).ToBytes(), &controllers); err != nil {
-			slog.Error(err.Error())
+			logger.GetLogger().Errorf(context.TODO(), "unmarshall error, err=%s", err.Error())
 			return
 		}
 
@@ -278,7 +278,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 				isShadowObjectInDomain = ctx.Domain.GetDomainFromObjectID(controller.UUIDs[0])
 			}
 
-			slog.Info(fmt.Sprintf(
+			logger.GetLogger().Infof(context.TODO(), fmt.Sprintf(
 				"::::: StartController: SelfID=%s DomainName=%s WeakClustering=%t UUID[0]=%s GetValidObjectId(UUIDs[0])=%s",
 				ctx.Self.ID,
 				ctx.Domain.Name(),
@@ -310,7 +310,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			)
 
 			if ctx.Domain.GetDomainFromObjectID(ctx.Self.ID) != ctx.Domain.GetDomainFromObjectID(controllerIDWithDomain) {
-				slog.Warn(
+				logger.GetLogger().Warnf(context.TODO(),
 					fmt.Sprintf("::::: StartController: domains are not the same for SelfID=%s and UUID[0]=%s",
 						ctx.Self.ID,
 						controller.UUIDs[0],
@@ -320,7 +320,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 			err := ctx.Signal(sf.AutoSignalSelect, inStatefun.CONTROLLER_START, controllerIDWithDomain, &payload, nil)
 			if err != nil {
-				slog.Error(err.Error())
+				logger.GetLogger().Error(context.TODO(), err.Error())
 				return
 			}
 		}
@@ -339,7 +339,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 func ClearController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
 
-	slog.Error(errors.ErrUnsupported.Error())
+	logger.GetLogger().Error(context.TODO(), errors.ErrUnsupported.Error())
 
 	response := easyjson.NewJSONObject()
 	response.SetByPath("command", easyjson.NewJSON(CLEAR_CONTROLLER))
@@ -350,6 +350,6 @@ func ClearController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 func Egress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	if err := ctx.Egress(sf.NatsCoreEgress, ctx.Payload, egress.ClientIDFromEgressID(ctx.Self.ID)); err != nil {
-		slog.Warn(err.Error())
+		logger.GetLogger().Error(context.TODO(), err.Error())
 	}
 }

@@ -1,9 +1,9 @@
 package adapter
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
@@ -153,7 +153,7 @@ func parseDecorators(objectID string, payload *easyjson.JSON) map[string]control
 		case _FUNCTION:
 			f, args, err := extractFunctionAndArgs(value)
 			if err != nil {
-				slog.Warn(err.Error())
+				logger.GetLogger().Warn(context.TODO(), err.Error())
 				continue
 			}
 
@@ -163,7 +163,7 @@ func parseDecorators(objectID string, payload *easyjson.JSON) map[string]control
 				args:     args,
 			}
 		default:
-			slog.Warn("parse decorator: unknown decorator", "decorator", decorator)
+			logger.GetLogger().Warnf(context.TODO(), "parse decorator: unknown decorator=%s", decorator)
 		}
 	}
 
@@ -239,7 +239,7 @@ func parseArguments(s string) ([]string, error) {
 		return nil, fmt.Errorf("unbalanced parentheses in arguments")
 	}
 
-	// Добавляем последний аргумент
+	// Add last argument
 	if currentArg.Len() > 0 {
 		args = append(args, strings.TrimSpace(currentArg.String()))
 	}
@@ -255,7 +255,7 @@ func getChildrenLinkDataRemote(db *db.DBSyncClient, id, filterLinkType string, f
 
 	data, err := db.Graph.VertexRead(id, true)
 	if err != nil {
-		logger.Logln(logger.ErrorLevel, err.Error())
+		logger.GetLogger().Error(context.TODO(), err.Error())
 		return easyjson.NewJSONObject()
 	}
 
@@ -292,7 +292,7 @@ func getChildrenUUIDSByLinkTypeRemote(db *db.DBSyncClient, id, filterLinkType st
 
 	data, err := db.Graph.VertexRead(id, true)
 	if err != nil {
-		logger.Logln(logger.ErrorLevel, err.Error())
+		logger.GetLogger().Error(context.TODO(), err.Error())
 		return result
 	}
 

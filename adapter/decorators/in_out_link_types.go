@@ -1,6 +1,7 @@
 package decorators
 
 import (
+	"context"
 	"strings"
 
 	"github.com/foliagecp/easyjson"
@@ -27,7 +28,7 @@ func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 	data, err := db.Graph.VertexRead(ctx.Self.ID, true)
 	if err != nil {
-		logger.Logln(logger.ErrorLevel, err.Error())
+		logger.GetLogger().Error(context.TODO(), err.Error())
 		return
 	}
 

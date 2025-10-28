@@ -82,7 +82,7 @@ func (s *adapterTestSuite) Test_StartController_Correct() {
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("name", easyjson.NewJSON(controllerName))
 	payload.SetByPath("declaration", controllerDeclaration)
-	payload.SetByPath("uuids", easyjson.JSONFromArray(uuids))
+	payload.SetByPath("uuids", easyjson.NewJSON(uuids))
 
 	err = s.Signal(sfplugins.AutoSignalSelect, typename, controllerID, &payload, nil)
 	s.Require().NoError(err)

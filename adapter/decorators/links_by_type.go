@@ -1,6 +1,8 @@
 package decorators
 
 import (
+	"context"
+
 	"github.com/foliagecp/sdk/statefun/logger"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/ui-app-lib/internal/common"
@@ -39,7 +41,7 @@ func linksByType(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	db := common.MustDBClient(ctx.Request)
 	data, err := db.Graph.VertexRead(ctx.Self.ID, true)
 	if err != nil {
-		logger.Logln(logger.ErrorLevel, err.Error())
+		logger.GetLogger().Error(context.TODO(), err.Error())
 		return
 	}
 

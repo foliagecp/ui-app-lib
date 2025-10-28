@@ -363,13 +363,12 @@ func ClearController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 }
 
 func Egress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
-	if !ctx.Payload.PathExists("payload.command") || !cache.Enabled() { // ignore command messages
+	if !ctx.Payload.PathExists("payload.command") && cache.Enabled() { // ignore command messages
 		tc := ctx.GetTraceContext()
 		if tc != nil {
 			ctx.Payload.SetByPath("__trace_context", *tc)
 		}
 		ctx.Payload.SetByPath("__caller_id", easyjson.NewJSON(ctx.Caller.ID))
-		cache.LinkTraceIDAndControllerOID(ctx.TraceID(), ctx.Caller.ID)
 	}
 	if err := ctx.Egress(sf.NatsCoreEgress, ctx.Payload, egress.ClientIDFromEgressID(ctx.Self.ID)); err != nil {
 		logger.GetLogger().Error(context.TODO(), err.Error())

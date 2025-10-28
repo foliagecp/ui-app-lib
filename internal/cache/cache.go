@@ -21,7 +21,7 @@ var (
 
 type Cache struct {
 	cache            sync.Map                   // hash -> CacheEntry
-	pending          sync.Map                   // hash -> CacheEntry (temporary)
+	pending          sync.Map                   // hash -> PendingEntry (temporary)
 	correlator       map[string]CorrelatorEntry // traceID -> hash, controllerOID (temporary)
 	correlatorMu     sync.RWMutex               // correlator mutex
 	egressPayloads   map[string]*easyjson.JSON  // controllerOID -> egress Payloads
@@ -29,11 +29,7 @@ type Cache struct {
 	config           *Config                    // cache config
 	subscription     *nats.Subscription         // egress subscription
 	nc               *nats.Conn                 // nats connection
-}
-
-type CorrelatorEntry struct {
-	Hash           string
-	ControllerOIDs []string
+	stopCh           chan struct{}              // for gracefully shutdown
 }
 
 type CacheEntry struct {
@@ -42,12 +38,16 @@ type CacheEntry struct {
 }
 
 type PendingEntry struct {
-	TraceID       string
-	Hash          string
-	ControllerIDs []string
-	FirstEgressAt time.Time
-	Timer         *time.Timer
-	Mutex         sync.Mutex
+	TraceID        string
+	Hash           string
+	ControllerOIDs []string
+	FirstEgressAt  time.Time
+	Timer          *time.Timer
+	Mutex          sync.Mutex
+}
+
+type CorrelatorEntry struct {
+	Hash string
 }
 
 func PrepareCollection(ctx *sf.StatefunContextProcessor, hash string) bool {
@@ -59,16 +59,14 @@ func PrepareCollection(ctx *sf.StatefunContextProcessor, hash string) bool {
 
 	uiCache.correlatorMu.Lock()
 	uiCache.correlator[traceID] = CorrelatorEntry{
-		Hash:           hash,
-		ControllerOIDs: make([]string, 0),
+		Hash: hash,
 	}
 	uiCache.correlatorMu.Unlock()
 
 	entry := &PendingEntry{
-		TraceID:       traceID,
-		Hash:          hash,
-		ControllerIDs: make([]string, 0),
-		FirstEgressAt: time.Now(),
+		TraceID:        traceID,
+		Hash:           hash,
+		ControllerOIDs: make([]string, 0),
 	}
 
 	entry.Timer = time.AfterFunc(
@@ -79,7 +77,9 @@ func PrepareCollection(ctx *sf.StatefunContextProcessor, hash string) bool {
 	_, loaded := uiCache.pending.LoadOrStore(hash, entry)
 
 	if loaded {
-		entry.Timer.Stop()
+		if !entry.Timer.Stop() {
+			<-entry.Timer.C
+		}
 		uiCache.correlatorMu.Lock()
 		delete(uiCache.correlator, traceID)
 		uiCache.correlatorMu.Unlock()
@@ -100,17 +100,16 @@ func saveToCache(hash string) {
 
 	entry := entryInterface.(*PendingEntry)
 	entry.Mutex.Lock()
+	defer entry.Mutex.Unlock()
 
 	if entry.Timer == nil {
-		entry.Mutex.Unlock()
 		return
 	}
 
 	traceID := entry.TraceID
 	entry.Timer = nil
-	entry.Mutex.Unlock()
 
-	if len(entry.ControllerIDs) == 0 {
+	if len(entry.ControllerOIDs) == 0 {
 		uiCache.correlatorMu.Lock()
 		delete(uiCache.correlator, traceID)
 		uiCache.correlatorMu.Unlock()
@@ -119,7 +118,7 @@ func saveToCache(hash string) {
 	}
 
 	uiCache.cache.Store(hash, &CacheEntry{
-		ControllerOIDs: entry.ControllerIDs,
+		ControllerOIDs: entry.ControllerOIDs,
 		ExpiresAt:      time.Now().Add(time.Duration(uiCache.config.TTLSeconds) * time.Second),
 	})
 
@@ -149,20 +148,19 @@ func collectEgress(payload *easyjson.JSON) {
 		return
 	}
 
-	if _, ok := uiCache.correlator[traceId]; !ok {
-		uiCache.egressPayloadsMu.Lock()
-		defer uiCache.egressPayloadsMu.Unlock()
-		clone := easyjson.NewJSONObject()
-		clone.SetByPath("payload", payload.GetByPath("payload"))
-		clone.SetByPath("cached", easyjson.NewJSON(true))
-		uiCache.egressPayloads[controllerOID] = &clone
-		return
-	}
+	clone := easyjson.NewJSONObject()
+	clone.SetByPath("payload", payload.GetByPath("payload"))
+	clone.SetByPath("cached", easyjson.NewJSON(true))
 
 	uiCache.correlatorMu.RLock()
-	correlatorEntry, ok := uiCache.correlator[traceId]
+	correlatorEntry, inCorrelator := uiCache.correlator[traceId]
 	uiCache.correlatorMu.RUnlock()
-	if !ok {
+
+	uiCache.egressPayloadsMu.Lock()
+	uiCache.egressPayloads[controllerOID] = &clone
+	uiCache.egressPayloadsMu.Unlock()
+
+	if !inCorrelator {
 		return
 	}
 
@@ -179,17 +177,7 @@ func collectEgress(payload *easyjson.JSON) {
 		pendingEntry.Timer.Reset(time.Duration(uiCache.config.CollectTimeoutMS) * time.Millisecond)
 	}
 
-	pendingEntry.ControllerIDs = append(pendingEntry.ControllerIDs, controllerOID)
-
-	clone := easyjson.NewJSONObject()
-	clone.SetByPath("payload", payload.GetByPath("payload"))
-	clone.SetByPath("cached", easyjson.NewJSON(true))
-
-	uiCache.egressPayloadsMu.Lock()
-	uiCache.egressPayloads[controllerOID] = &clone
-	uiCache.egressPayloadsMu.Unlock()
-
-	uiCache.pending.Store(correlatorEntry.Hash, pendingEntry)
+	pendingEntry.ControllerOIDs = append(pendingEntry.ControllerOIDs, controllerOID)
 }
 
 func PublishCachedEgress(clientID string, controllerOIDs []string) {
@@ -197,13 +185,17 @@ func PublishCachedEgress(clientID string, controllerOIDs []string) {
 		return
 	}
 	for _, cOID := range controllerOIDs {
-		uiCache.egressPayloadsMu.Lock()
-		payload := uiCache.egressPayloads[cOID]
+		uiCache.egressPayloadsMu.RLock()
+		payload, exist := uiCache.egressPayloads[cOID]
+		uiCache.egressPayloadsMu.RUnlock()
+		if !exist || payload == nil {
+			lg.GetLogger().Warnf(context.TODO(), "payload not found for controllerOID: %s", cOID)
+			continue
+		}
 		if err := uiCache.nc.Publish(fmt.Sprintf("egress.ui.%s", clientID), payload.ToBytes()); err != nil {
 			lg.GetLogger().Errorf(context.TODO(), "publishCachedEgress error: %v", err)
 		}
 	}
-	uiCache.egressPayloadsMu.Unlock()
 }
 
 func Get(hash string) *CacheEntry {
@@ -221,7 +213,7 @@ func Get(hash string) *CacheEntry {
 		return entry
 	}
 
-	uiCache.cache.Delete(hash)
+	uiCache.cache.CompareAndDelete(hash, entryInterface)
 	return nil
 }
 
@@ -234,7 +226,6 @@ func IsCacheable(payload *easyjson.JSON) bool {
 		return false
 	}
 
-	// add "no_cache":true to request for disable cache
 	if payload.GetByPath("no_cache").AsBoolDefault(false) {
 		return false
 	}
@@ -243,9 +234,7 @@ func IsCacheable(payload *easyjson.JSON) bool {
 }
 
 func Hash(payload *easyjson.JSON) string {
-	clone := payload.Clone().GetPtr()
-	//clone.Normalize() everytime in order (by frontend)
-	bytes := clone.ToBytes()
+	bytes := payload.ToBytes()
 	h := fnv.New64a()
 	system.MsgOnErrorReturn(h.Write(bytes))
 	return strconv.FormatUint(h.Sum64(), 16)
@@ -255,6 +244,7 @@ func (c *Cache) handleNatsMessage(msg *nats.Msg) {
 	payload, ok := easyjson.JSONFromBytes(msg.Data)
 	if !ok {
 		lg.GetLogger().Errorf(context.TODO(), "invalid nats message")
+		return
 	}
 
 	if payload.PathExists("payload.command") {
@@ -262,16 +252,4 @@ func (c *Cache) handleNatsMessage(msg *nats.Msg) {
 	}
 
 	collectEgress(&payload)
-}
-
-func LinkTraceIDAndControllerOID(traceID, controllerOID string) {
-	if !Enabled() {
-		return
-	}
-	uiCache.correlatorMu.Lock()
-	defer uiCache.correlatorMu.Unlock()
-	if v, ok := uiCache.correlator[traceID]; ok {
-		v.ControllerOIDs = append(v.ControllerOIDs, controllerOID)
-		uiCache.correlator[traceID] = v
-	}
 }

@@ -14,24 +14,25 @@ import (
 
 const (
 	EGRESS_UI_SUBSRIBE_WILDCARD = "egress.ui.>"
-	PERIODIC_CLEANER_TIMEOUT    = time.Minute * 1
 )
 
 var config *Config
 
 type Config struct {
-	Enabled          bool
-	TTLSeconds       int
-	CollectTimeoutMS int
-	MaxEntries       int
+	Enabled                   bool
+	TTLSeconds                int
+	CollectTimeoutMS          int
+	MaxEntries                int
+	PeriodicCleanerTimeoutMin int
 }
 
 func InitConfig() {
 	config = &Config{
-		Enabled:          system.GetEnvMustProceed("UI_APP_LIB_CACHE_ENABLED", true),
-		TTLSeconds:       system.GetEnvMustProceed("UI_APP_LIB_CACHE_TTL_SECONDS", 300),
-		CollectTimeoutMS: system.GetEnvMustProceed("UI_APP_LIB_CACHE_COLLECT_TIMEOUT_MS", 10000),
-		MaxEntries:       system.GetEnvMustProceed("UI_APP_LIB_CACHE_MAX_ENTRIES", 10000),
+		Enabled:                   system.GetEnvMustProceed("UI_APP_LIB_CACHE_ENABLED", false),
+		TTLSeconds:                system.GetEnvMustProceed("UI_APP_LIB_CACHE_TTL_SECONDS", 600),
+		CollectTimeoutMS:          system.GetEnvMustProceed("UI_APP_LIB_CACHE_COLLECT_TIMEOUT_MS", 10000),
+		MaxEntries:                system.GetEnvMustProceed("UI_APP_LIB_CACHE_MAX_ENTRIES", 10000),
+		PeriodicCleanerTimeoutMin: system.GetEnvMustProceed("UI_APP_LIB_CACHE_PERIODIC_CLEANER_TIMEOUT_MIN", 5),
 	}
 }
 
@@ -40,7 +41,7 @@ func Init(runtime *statefun.Runtime) {
 	InitConfig()
 
 	if !config.Enabled {
-		le.Infof(context.TODO(), "cache disabled")
+		le.Infof(context.TODO(), ":::::: ui cache disabled, use UI_APP_LIB_CACHE_ENABLED in .env")
 		return
 	}
 
@@ -69,7 +70,7 @@ func Init(runtime *statefun.Runtime) {
 
 	go func() {
 		lg.GetLogger().Trace(context.TODO(), "cache cleaner started")
-		ticker := time.NewTicker(PERIODIC_CLEANER_TIMEOUT)
+		ticker := time.NewTicker(time.Duration(config.PeriodicCleanerTimeoutMin) * time.Minute)
 		defer ticker.Stop()
 		for {
 			select {
@@ -82,6 +83,8 @@ func Init(runtime *statefun.Runtime) {
 			}
 		}
 	}()
+
+	le.Infof(context.TODO(), ":::::: ui cache enabled")
 
 	return
 }
@@ -139,25 +142,27 @@ func (c *Cache) cleanupCacheAndCollect() (usedOIDs map[string]struct{}) {
 }
 
 func (c *Cache) cleanupEgressPayloads(usedOIDs map[string]struct{}) {
-	all, deleted := 0, 0
-	log := lg.GetLogger()
-	log.Debugf(context.TODO(), ">>> start delete unactual entries from ui-cache-egress-payloads >>>")
-
-	c.egressPayloadsMu.Lock()
-	for controllerOID := range c.egressPayloads {
-		all++
-		if _, ok := usedOIDs[controllerOID]; !ok {
-			delete(c.egressPayloads, controllerOID)
-			deleted++
-		}
-	}
-	c.egressPayloadsMu.Unlock()
-
-	log.Debugf(context.TODO(),
-		"<<< finish delete unactual entries from ui-cache-egress-payloads, all=%d, deleted=%d <<<", all, deleted)
+	//TODO optimize
+	//all, deleted := 0, 0
+	//log := lg.GetLogger()
+	//log.Debugf(context.TODO(), ">>> start delete unactual entries from ui-cache-egress-payloads >>>")
+	//
+	//c.egressPayloadsMu.Lock()
+	//for controllerOID := range c.egressPayloads {
+	//	all++
+	//	if _, ok := usedOIDs[controllerOID]; !ok {
+	//		delete(c.egressPayloads, controllerOID)
+	//		deleted++
+	//	}
+	//}
+	//c.egressPayloadsMu.Unlock()
+	//
+	//log.Debugf(context.TODO(),
+	//	"<<< finish delete unactual entries from ui-cache-egress-payloads, all=%d, deleted=%d <<<", all, deleted)
 }
 
 func (c *Cache) cleanupCorrelator() {
+	//TODO probably repeat function
 	all, deleted := 0, 0
 	log := lg.GetLogger()
 	log.Debugf(context.TODO(), ">>> start delete unactual entries from ui-cache-correlator >>>")

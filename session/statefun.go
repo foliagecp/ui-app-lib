@@ -26,14 +26,14 @@ var (
 )
 
 func RegisterFunctions(runtime *statefun.Runtime) {
-	statefun.NewFunctionType(runtime, inStatefun.INGRESS, Ingress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_ROUTER, SessionRouter, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_START, StartSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLOSE, CloseSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_UPDATE_ACTIVITY, UpdateSessionActivity, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_START_CONTROLLER, StartController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLEAR_CONTROLLER, ClearController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.EGRESS, Egress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.INGRESS, Ingress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(500))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_ROUTER, SessionRouter, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_START, StartSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLOSE, CloseSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_UPDATE_ACTIVITY, UpdateSessionActivity, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_START_CONTROLLER, StartController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLEAR_CONTROLLER, ClearController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.EGRESS, Egress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(100))
 
 	cache.Init(runtime)
 

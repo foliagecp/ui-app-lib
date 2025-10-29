@@ -85,8 +85,6 @@ func Init(runtime *statefun.Runtime) {
 	}()
 
 	le.Infof(context.TODO(), ":::::: ui cache enabled")
-
-	return
 }
 
 func Enabled() bool {

@@ -1,8 +1,8 @@
 package uilib
 
 import (
+	"context"
 	"fmt"
-	"log/slog"
 	"sort"
 	"time"
 
@@ -26,7 +26,7 @@ const (
 func sessionsKeeper(runtime *statefun.Runtime) {
 	dbc, err := db.NewDBSyncClientFromRequestFunction(runtime.Request)
 	if err != nil {
-		logger.Logf(logger.ErrorLevel, "ui-app-lib: cannot start sessionsKeeper, dbc creation error %s", err.Error())
+		logger.GetLogger().Errorf(context.TODO(), "ui-app-lib: cannot start sessionsKeeper, dbc creation error %s", err.Error())
 		return
 	}
 
@@ -36,7 +36,7 @@ func sessionsKeeper(runtime *statefun.Runtime) {
 
 		ids, err := dbc.Query.JPGQLCtraQuery(inStatefun.SESSION_TYPE, fmt.Sprintf(".*[l:type('%s')]", crud.OBJECT_TYPELINK))
 		if err != nil {
-			slog.Error(err.Error())
+			logger.GetLogger().Error(context.TODO(), err.Error())
 			return
 		}
 

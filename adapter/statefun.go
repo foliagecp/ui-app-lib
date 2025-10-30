@@ -3,7 +3,6 @@ package adapter
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/foliagecp/sdk/clients/go/db"
 	"github.com/foliagecp/sdk/embedded/graph/crud"
 	"github.com/foliagecp/sdk/statefun"
+	"github.com/foliagecp/sdk/statefun/logger"
 	sfplugins "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/sdk/statefun/system"
 	"github.com/foliagecp/ui-app-lib/adapter/decorators"
@@ -44,7 +44,7 @@ func controllerObjectOnTriggerWindowUpdater(runtime *statefun.Runtime) {
 				for objectUUI, updatePayload := range controllerObjectOnTriggerWindowUpdaterTasks {
 					err := runtime.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, objectUUI, updatePayload, nil)
 					if err != nil {
-						slog.Warn(err.Error())
+						logger.GetLogger().Warn(context.TODO(), err.Error())
 					}
 				}
 				clear(controllerObjectOnTriggerWindowUpdaterTasks)
@@ -56,11 +56,11 @@ func controllerObjectOnTriggerWindowUpdater(runtime *statefun.Runtime) {
 }
 
 func RegisterFunctions(runtime *statefun.Runtime) {
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_START, StartController, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CLEAR, ClearController, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_UPDATE, UpdateControllerObject, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_TRIGGER, ControllerObjectTrigger, *statefun.NewFunctionTypeConfig())
-	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CONSTRUCT, ControllerConstruct, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sfplugins.AutoRequestSelect))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_START, StartController, *statefun.NewFunctionTypeConfig().SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CLEAR, ClearController, *statefun.NewFunctionTypeConfig().SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_UPDATE, UpdateControllerObject, *statefun.NewFunctionTypeConfig().SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_OBJECT_TRIGGER, ControllerObjectTrigger, *statefun.NewFunctionTypeConfig().SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.CONTROLLER_CONSTRUCT, ControllerConstruct, *statefun.NewFunctionTypeConfig().SetAllowedRequestProviders(sfplugins.AutoRequestSelect).SetIdChannelSize(100))
 
 	decorators.Register(runtime)
 
@@ -152,14 +152,14 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 
 	if err := cmdb.ObjectsLinkCreate(self.ID, caller.ID, caller.ID, []string{}); err != nil {
 		if !common.ErrorAlreadyExists(err) {
-			slog.Warn("failed to create objects link between controller and session", "err", err.Error())
+			logger.GetLogger().Warnf(context.TODO(), "failed to create objects link between controller and session, err=%v", err.Error())
 			return
 		}
 	}
 
 	if err := cmdb.ObjectsLinkCreate(caller.ID, self.ID, self.ID, []string{}); err != nil {
 		if !common.ErrorAlreadyExists(err) {
-			slog.Warn("failed to create objects link between session and controller", "err", err.Error())
+			logger.GetLogger().Warnf(context.TODO(), "failed to create objects link between session and controller, err=%v", err.Error())
 			return
 		}
 	}
@@ -174,14 +174,14 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 	objectType, err := common.ObjectType(cmdb, objectUUID)
 	if err != nil {
 		if !common.ErrorAlreadyExists(err) {
-			slog.Warn("failed to find uuid type", "err", err.Error())
+			logger.GetLogger().Warnf(context.TODO(), "failed to find uuid type, err=%v", err.Error())
 			return
 		}
 	}
 
 	if err := cmdb.TypesLinkCreate(inStatefun.CONTROLLER_OBJECT_TYPE, objectType, inStatefun.CONTROLLER_SUBJECT_TYPE, []string{}); err != nil {
 		if !common.ErrorAlreadyExists(err) {
-			slog.Warn("failed to create types link between controller object and uuid", "err", err.Error())
+			logger.GetLogger().Warn(context.TODO(), "failed to create types link between controller object and uuid", err.Error())
 			return
 		}
 	}
@@ -347,7 +347,7 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 // if it's different send update to controller
 func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContextProcessor) {
 	controllerObjectID := ctx.Self.ID
-	slog.Info("Update controller object", "id", controllerObjectID)
+	logger.GetLogger().Infof(context.TODO(), "Update controller object, id=%s", controllerObjectID)
 
 	var body *easyjson.JSON
 	var parentControllerID string
@@ -371,21 +371,21 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 
 			if err := cmdb.ObjectCreate(controllerObjectID, inStatefun.CONTROLLER_OBJECT_TYPE, controllerObjectBody); err != nil {
 				if !common.ErrorAlreadyExists(err) {
-					slog.Warn("failed to create controller object", "err", err.Error())
+					logger.GetLogger().Warnf(context.TODO(), "failed to create controller object, err=%s", err.Error())
 					return
 				}
 			}
 
 			if err := cmdb.ObjectsLinkCreate(controllerObjectID, realObjectID, "uiapplib_"+realObjectID, []string{}); err != nil {
 				if !common.ErrorAlreadyExists(err) {
-					slog.Warn("failed to create objects link between controller object and uuid", "err", err.Error())
+					logger.GetLogger().Warnf(context.TODO(), "failed to create objects link between controller object and uuid, err=%s", err.Error())
 					return
 				}
 			}
 
 			if err := cmdb.ObjectsLinkCreate(parentControllerID, controllerObjectID, controllerObjectID, []string{}); err != nil {
 				if !common.ErrorAlreadyExists(err) {
-					slog.Warn("failed to create objects link between controller and controller object", "err", err.Error())
+					logger.GetLogger().Warnf(context.TODO(), "failed to create objects link between controller and controller object, err=%s", err.Error())
 					return
 				}
 			}
@@ -395,7 +395,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	} else {
 		parentUUID, ok := body.GetByPath("parent").AsString()
 		if !ok {
-			slog.Warn("empty controller id")
+			logger.GetLogger().Warn(context.TODO(), "empty controller id")
 			return
 		}
 		parentControllerID = parentUUID
@@ -405,7 +405,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 
 	controllerBody, err := ctx.Domain.Cache().GetValueJSON(parentControllerID)
 	if err != nil {
-		slog.Error(err.Error())
+		logger.GetLogger().Error(context.TODO(), err.Error())
 		return
 	}
 
@@ -462,16 +462,16 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 	subscribers := getChildrenUUIDSByLinkTypeLocal(ctx, parentControllerID, inStatefun.SUBSCRIBER_TYPE)
 
 	if len(forceUpdateSessionId) == 0 {
-		slog.Info("Send update to subscribers", "subscribers", subscribers)
+		logger.GetLogger().Infof(context.TODO(), "Send update to subscribers=%v", subscribers)
 		for _, subID := range subscribers {
 			if err := egress.SendToSessionEgress(ctx, subID, &updateReply); err != nil {
-				slog.Warn(err.Error())
+				logger.GetLogger().Warn(context.TODO(), err.Error())
 			}
 		}
 	} else {
-		slog.Info("Send update to force update requested session only", "subscribers", subscribers)
+		logger.GetLogger().Infof(context.TODO(), "Send update to force update requested session only, subscribers=%v", subscribers)
 		if err := egress.SendToSessionEgress(ctx, forceUpdateSessionId, &updateReply); err != nil {
-			slog.Warn(err.Error())
+			logger.GetLogger().Warn(context.TODO(), err.Error())
 		}
 	}
 	// ------------------------------------------------------------------------

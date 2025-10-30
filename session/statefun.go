@@ -5,15 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/foliagecp/easyjson"
 	"github.com/foliagecp/sdk/clients/go/db"
 	"github.com/foliagecp/sdk/embedded/graph/crud"
 	"github.com/foliagecp/sdk/statefun"
+	"github.com/foliagecp/sdk/statefun/logger"
 	sf "github.com/foliagecp/sdk/statefun/plugins"
 	"github.com/foliagecp/sdk/statefun/system"
+	"github.com/foliagecp/ui-app-lib/internal/cache"
 	"github.com/foliagecp/ui-app-lib/internal/common"
 	"github.com/foliagecp/ui-app-lib/internal/egress"
 	"github.com/foliagecp/ui-app-lib/internal/generate"
@@ -25,14 +26,16 @@ var (
 )
 
 func RegisterFunctions(runtime *statefun.Runtime) {
-	statefun.NewFunctionType(runtime, inStatefun.INGRESS, Ingress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_ROUTER, SessionRouter, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_START, StartSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLOSE, CloseSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_UPDATE_ACTIVITY, UpdateSessionActivity, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_START_CONTROLLER, StartController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLEAR_CONTROLLER, ClearController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
-	statefun.NewFunctionType(runtime, inStatefun.EGRESS, Egress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1))
+	statefun.NewFunctionType(runtime, inStatefun.INGRESS, Ingress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(500))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_ROUTER, SessionRouter, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_START, StartSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLOSE, CloseSession, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_UPDATE_ACTIVITY, UpdateSessionActivity, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_START_CONTROLLER, StartController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.SESSION_CLEAR_CONTROLLER, ClearController, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(100))
+	statefun.NewFunctionType(runtime, inStatefun.EGRESS, Egress, *statefun.NewFunctionTypeConfig().SetMaxIdHandlers(-1).SetIdChannelSize(100))
+
+	cache.Init(runtime)
 
 	runtime.RegisterOnAfterStartFunction(InitSchema, false)
 }
@@ -89,14 +92,25 @@ func Ingress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		payload := ctx.Payload
 		sessionID := ctx.Domain.CreateObjectIDWithHubDomain(generate.SessionID(id).String(), false)
 
-		slog.Info("Receive msg", "from", id, "session_id", sessionID)
+		logger.GetLogger().Infof(context.TODO(), "Receive msg from=%s, session_id=%s", id, sessionID)
 
 		payload.SetByPath("client_id", easyjson.NewJSON(id))
 
 		if err := ctx.Signal(sf.AutoSignalSelect, inStatefun.SESSION_ROUTER, sessionID, payload, nil); err != nil {
-			slog.Warn(err.Error())
+			logger.GetLogger().Warn(context.TODO(), err.Error())
 		}
 	} else { // Routing into ingresses of all weak cluster domains
+		if ctx.TraceContext() != nil && cache.IsCacheable(ctx.Payload) {
+			hash := cache.Hash(ctx.Payload)
+			if cached := cache.Get(hash); cached != nil {
+				logger.GetLogger().Tracef(context.TODO(), ":::::::::::cache hit, request hash=%s", hash)
+				cache.PublishCachedEgress(ctx.Self.ID, cached.ControllerOIDs)
+				return
+			}
+			logger.GetLogger().Tracef(context.TODO(), ":::::::::::cache miss, request hash=%s", hash)
+			cache.PrepareCollection(ctx, hash)
+		}
+
 		domains := ctx.Domain.GetWeakClusterDomains()
 		if len(domains) > 1 {
 			weakClustering = true
@@ -131,7 +145,7 @@ var routes = map[Command]string{
 func SessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
 	payload := ctx.Payload
-	logger := slog.With("session_id", sessionID)
+	lg := logger.GetLogger().With(map[string]interface{}{"session_id": sessionID})
 
 	var command Command
 
@@ -146,11 +160,11 @@ func SessionRouter(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 	next, ok := routes[command]
 	if !ok {
-		logger.Warn("Command not found", "command", command)
+		lg.Warnf(context.TODO(), "Command not found, command=%s", command)
 		return
 	}
 
-	logger.Info("Forward to next route", "next", next)
+	lg.Infof(context.TODO(), "Forward to next route, next=%s", next)
 
 	system.MsgOnErrorReturn(ctx.Signal(sf.AutoSignalSelect, next, sessionID, payload, nil))
 	system.MsgOnErrorReturn(ctx.Signal(sf.AutoSignalSelect, inStatefun.SESSION_UPDATE_ACTIVITY, sessionID, nil, nil))
@@ -218,12 +232,12 @@ func CloseSession(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 	/*dbc, err := db.NewDBSyncClientFromRequestFunction(ctx.Request)
 	if err != nil {
-		slog.Error(err.Error())
+		logger.GetLogger().Error(context.TODO(), err.Error())
 		return
 	}*/
 	cmdb, err := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
 	if err != nil {
-		slog.Error(err.Error())
+		logger.GetLogger().Error(context.TODO(), err.Error())
 		return
 	}
 
@@ -265,7 +279,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	for _, plugin := range ctx.Payload.ObjectKeys() {
 		var controllers map[string]Controller
 		if err := json.Unmarshal(ctx.Payload.GetByPath(plugin).ToBytes(), &controllers); err != nil {
-			slog.Error(err.Error())
+			logger.GetLogger().Errorf(context.TODO(), "unmarshall error, err=%s", err.Error())
 			return
 		}
 
@@ -278,7 +292,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 				isShadowObjectInDomain = ctx.Domain.GetDomainFromObjectID(controller.UUIDs[0])
 			}
 
-			slog.Info(fmt.Sprintf(
+			logger.GetLogger().Infof(context.TODO(), fmt.Sprintf(
 				"::::: StartController: SelfID=%s DomainName=%s WeakClustering=%t UUID[0]=%s GetValidObjectId(UUIDs[0])=%s",
 				ctx.Self.ID,
 				ctx.Domain.Name(),
@@ -297,7 +311,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			payload := easyjson.NewJSONObject()
 			payload.SetByPath("plugin", easyjson.NewJSON(plugin))
 			payload.SetByPath("declaration", body)
-			payload.SetByPath("uuids", easyjson.JSONFromArray(controller.UUIDs))
+			payload.SetByPath("uuids", easyjson.NewJSON(controller.UUIDs))
 			payload.SetByPath("session_id", easyjson.NewJSON(sessionID))
 			payload.SetByPath("is_shadow_object_in_domain", easyjson.NewJSON(isShadowObjectInDomain))
 			payload.SetByPath("name", easyjson.NewJSON(name))
@@ -310,7 +324,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			)
 
 			if ctx.Domain.GetDomainFromObjectID(ctx.Self.ID) != ctx.Domain.GetDomainFromObjectID(controllerIDWithDomain) {
-				slog.Warn(
+				logger.GetLogger().Warnf(context.TODO(),
 					fmt.Sprintf("::::: StartController: domains are not the same for SelfID=%s and UUID[0]=%s",
 						ctx.Self.ID,
 						controller.UUIDs[0],
@@ -320,7 +334,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 
 			err := ctx.Signal(sf.AutoSignalSelect, inStatefun.CONTROLLER_START, controllerIDWithDomain, &payload, nil)
 			if err != nil {
-				slog.Error(err.Error())
+				logger.GetLogger().Error(context.TODO(), err.Error())
 				return
 			}
 		}
@@ -339,7 +353,7 @@ func StartController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 func ClearController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	sessionID := ctx.Self.ID
 
-	slog.Error(errors.ErrUnsupported.Error())
+	logger.GetLogger().Error(context.TODO(), errors.ErrUnsupported.Error())
 
 	response := easyjson.NewJSONObject()
 	response.SetByPath("command", easyjson.NewJSON(CLEAR_CONTROLLER))
@@ -349,7 +363,14 @@ func ClearController(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 }
 
 func Egress(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
+	if !ctx.Payload.PathExists("payload.command") && cache.Enabled() { // ignore command messages
+		tc := ctx.GetTraceContext()
+		if tc != nil {
+			ctx.Payload.SetByPath("__trace_context", *tc)
+		}
+		ctx.Payload.SetByPath("__caller_id", easyjson.NewJSON(ctx.Caller.ID))
+	}
 	if err := ctx.Egress(sf.NatsCoreEgress, ctx.Payload, egress.ClientIDFromEgressID(ctx.Self.ID)); err != nil {
-		slog.Warn(err.Error())
+		logger.GetLogger().Error(context.TODO(), err.Error())
 	}
 }

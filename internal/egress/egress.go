@@ -54,7 +54,7 @@ func SendToSessionEgress(ctx *sf.StatefunContextProcessor, sessionID string, pay
 		sessionID2ClientIDCache.Store(sessionID, clientID)
 	}
 
-	return ctx.Signal(sf.AutoSignalSelect, inStatefun.EGRESS, generateEgressID(clientID), payload, nil)
+	return ctx.Signal(sf.AutoSignalSelect, inStatefun.EGRESS, GenerateEgressID(clientID), payload, nil)
 }
 
 func ClientIDFromEgressID(id string) string {
@@ -67,7 +67,7 @@ func ClientIDFromEgressID(id string) string {
 	return split[0]
 }
 
-func generateEgressID(clientID string) string {
+func GenerateEgressID(clientID string) string {
 	s := make([]byte, 5)
 	_, err := rand.Read(s)
 	system.MsgOnErrorReturn(err)

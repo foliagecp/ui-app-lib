@@ -4,7 +4,7 @@ go 1.21.1
 
 require (
 	github.com/foliagecp/easyjson v0.1.7
-	github.com/foliagecp/sdk v0.1.7-trace-context.0.20251106232710-38e9347a03c4
+	github.com/foliagecp/sdk v0.1.7-speedup-upsert-hotfix-3
 	github.com/google/uuid v1.6.0
 	github.com/nats-io/nats.go v1.37.0
 	github.com/stretchr/testify v1.11.1

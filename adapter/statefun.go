@@ -422,20 +422,20 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 
 	forceUpdateSessionId := ctx.Payload.GetByPath("force_update_session_id").AsStringDefault("")
 
-	cacheMiss := false
-	db := common.MustDBClient(ctx.Request)
-	realObjectData, err := db.Graph.VertexRead(realObjectID, false)
-	realObjectDataHash := system.GetHashStr(realObjectData.GetByPath("body").ToString())
-	if err == nil {
+	//cacheMiss := false
+	//db := common.MustDBClient(ctx.Request)
+	//realObjectData, err := db.Graph.VertexRead(realObjectID, false)
+	//realObjectDataHash := system.GetHashStr(realObjectData.GetByPath("body").ToString())
+	/*if err == nil {
 		if body.GetByPath("cached_real_object_body_hash").AsStringDefault("") != realObjectDataHash {
-			cacheMiss = true
+			//cacheMiss = true
 		}
-	}
+	}*/
 
 	oldResult := body.GetByPath("result")
 	newResult := oldResult
 
-	if cacheMiss {
+	if true {
 		result, err := ctx.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_CONSTRUCT, realObjectID, &controllerDeclaration, nil)
 		if err != nil {
 			result = easyjson.NewJSONObject().GetPtr()
@@ -446,7 +446,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 		newResult = result.GetByPath("result")
 
 		body.SetByPath("result", newResult)
-		body.SetByPath("cached_real_object_body_hash", easyjson.NewJSON(realObjectDataHash))
+		//body.SetByPath("cached_real_object_body_hash", easyjson.NewJSON(realObjectDataHash))
 	}
 
 	if len(forceUpdateSessionId) == 0 && checkUpdates {

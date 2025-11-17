@@ -61,17 +61,9 @@ func linksByType(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	}
 
 	for i := 0; i < data.GetByPath("links.in").ArraySize(); i++ {
-		objectID := data.GetByPath("links.in").ArrayElement(i).GetByPath("from").AsStringDefault("")
-
-		linkBody, err := db.CMDB.ObjectsLinkRead(objectID, ctx.Self.ID)
-		if err != nil {
-			continue
-		}
-
-		linkType, ok := linkBody.GetByPath("type").AsString()
-		if !ok {
-			continue
-		}
+		j := data.GetByPath("links.in").ArrayElement(i)
+		objectID := j.GetByPath("from").AsStringDefault("")
+		linkType := j.GetByPath("type").AsStringDefault("")
 
 		if linkType != filterLinkType {
 			continue

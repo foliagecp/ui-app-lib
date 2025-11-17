@@ -139,6 +139,14 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 	sessionId := payload.GetByPath("session_id").AsStringDefault("")
 
 	body := ctx.GetObjectContext()
+
+	inited := body.IsNonEmptyObject()
+
+	uuids, _ := payload.GetByPath("uuids").AsArrayString()
+	if len(uuids) == 0 {
+		return
+	}
+
 	body.SetByPath(_CONTROLLER_DECLARATION, payload.GetByPath(_CONTROLLER_DECLARATION))
 	body.SetByPath("name", payload.GetByPath("name"))
 	body.SetByPath("plugin", payload.GetByPath("plugin"))
@@ -146,8 +154,8 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 
 	cmdb, _ := db.NewCMDBSyncClientFromRequestFunction(ctx.Request)
 
-	if err := cmdb.ObjectCreate(self.ID, inStatefun.CONTROLLER_TYPE, *body); err != nil {
-		system.MsgOnErrorReturn(cmdb.ObjectUpdate(self.ID, *body, true))
+	if !inited {
+		system.MsgOnErrorReturn(cmdb.ObjectUpdate(self.ID, *body, true, inStatefun.CONTROLLER_TYPE))
 	}
 
 	if err := cmdb.ObjectsLinkCreate(self.ID, caller.ID, caller.ID, []string{}); err != nil {
@@ -164,45 +172,42 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 		}
 	}
 
-	uuids, _ := payload.GetByPath("uuids").AsArrayString()
-	if len(uuids) == 0 {
-		return
-	}
-
-	// Prepare type data ---------------------------------
-	objectUUID := ctx.Domain.GetValidObjectId(uuids[0])
-	objectType, err := common.ObjectType(cmdb, objectUUID)
-	if err != nil {
-		if !common.ErrorAlreadyExists(err) {
-			logger.GetLogger().Warnf(context.TODO(), "failed to find uuid type, err=%v", err.Error())
-			return
+	if !inited {
+		// Prepare type data ---------------------------------
+		objectUUID := ctx.Domain.GetValidObjectId(uuids[0])
+		objectType, err := crud.FindObjectType(ctx, objectUUID)
+		if err != nil {
+			if !common.ErrorAlreadyExists(err) {
+				logger.GetLogger().Warnf(context.TODO(), "failed to find uuid type, err=%v", err.Error())
+				return
+			}
 		}
-	}
 
-	if err := cmdb.TypesLinkCreate(inStatefun.CONTROLLER_OBJECT_TYPE, objectType, inStatefun.CONTROLLER_SUBJECT_TYPE, []string{}); err != nil {
-		if !common.ErrorAlreadyExists(err) {
-			logger.GetLogger().Warn(context.TODO(), "failed to create types link between controller object and uuid", err.Error())
-			return
+		if err := cmdb.TypesLinkCreate(inStatefun.CONTROLLER_OBJECT_TYPE, objectType, inStatefun.CONTROLLER_SUBJECT_TYPE, []string{}); err != nil {
+			if !common.ErrorAlreadyExists(err) {
+				logger.GetLogger().Warn(context.TODO(), "failed to create types link between controller object and uuid", err.Error())
+				return
+			}
 		}
-	}
 
-	system.MsgOnErrorReturn(cmdb.TriggerObjectSet(objectType, db.UpdateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER))
-	system.MsgOnErrorReturn(cmdb.TriggerObjectSet(objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER))
+		system.MsgOnErrorReturn(cmdb.TriggerObjectSet(objectType, db.UpdateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER))
+		system.MsgOnErrorReturn(cmdb.TriggerObjectSet(objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER))
 
-	if typeData, err := cmdb.TypeRead(objectType); err == nil {
-		linksIn := typeData.GetByPath("links.in")
-		for i := 0; i < linksIn.ArraySize(); i++ {
-			linkData := typeData.GetByPath("links.in").ArrayElement(i)
-			if linkData.GetByPath("name").AsStringDefault("") == objectType { // link from other type
-				fromId := linkData.GetByPath("from").AsStringDefault("")
-				if len(fromId) > 0 && ctx.Domain.GetObjectIDWithoutDomain(fromId) != crud.BUILT_IN_TYPES {
-					system.MsgOnErrorReturn(cmdb.TriggerLinkSet(fromId, objectType, db.CreateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER))
-					system.MsgOnErrorReturn(cmdb.TriggerLinkSet(fromId, objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER))
+		if typeData, err := cmdb.TypeRead(objectType); err == nil {
+			linksIn := typeData.GetByPath("links.in")
+			for i := 0; i < linksIn.ArraySize(); i++ {
+				linkData := typeData.GetByPath("links.in").ArrayElement(i)
+				if linkData.GetByPath("name").AsStringDefault("") == objectType { // link from other type
+					fromId := linkData.GetByPath("from").AsStringDefault("")
+					if len(fromId) > 0 && ctx.Domain.GetObjectIDWithoutDomain(fromId) != crud.BUILT_IN_TYPES {
+						system.MsgOnErrorReturn(cmdb.TriggerLinkSet(fromId, objectType, db.CreateTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER))
+						system.MsgOnErrorReturn(cmdb.TriggerLinkSet(fromId, objectType, db.DeleteTrigger, inStatefun.CONTROLLER_OBJECT_TRIGGER))
+					}
 				}
 			}
 		}
+		// ----------------------------------------------------
 	}
-	// ----------------------------------------------------
 
 	for _, oUUID := range uuids {
 		objectUUID := ctx.Domain.GetValidObjectId(oUUID)
@@ -217,6 +222,10 @@ func StartController(_ sfplugins.StatefunExecutor, ctx *sfplugins.StatefunContex
 		payload.SetByPath("controllerObjectBody", controllerObjectBody)
 		//ctx.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil) // Sync call for Golang direct call if possible (speedup?)
 		system.MsgOnErrorReturn(ctx.Signal(sfplugins.AutoSignalSelect, inStatefun.CONTROLLER_OBJECT_UPDATE, controllerObjectID, &payload, nil))
+	}
+
+	if inited {
+		ctx.SetObjectContext(body)
 	}
 }
 
@@ -413,20 +422,20 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 
 	forceUpdateSessionId := ctx.Payload.GetByPath("force_update_session_id").AsStringDefault("")
 
-	cacheMiss := false
-	db := common.MustDBClient(ctx.Request)
-	realObjectData, err := db.Graph.VertexRead(realObjectID, false)
-	realObjectDataHash := system.GetHashStr(realObjectData.GetByPath("body").ToString())
-	if err == nil {
+	//cacheMiss := false
+	//db := common.MustDBClient(ctx.Request)
+	//realObjectData, err := db.Graph.VertexRead(realObjectID, false)
+	//realObjectDataHash := system.GetHashStr(realObjectData.GetByPath("body").ToString())
+	/*if err == nil {
 		if body.GetByPath("cached_real_object_body_hash").AsStringDefault("") != realObjectDataHash {
-			cacheMiss = true
+			//cacheMiss = true
 		}
-	}
+	}*/
 
 	oldResult := body.GetByPath("result")
 	newResult := oldResult
 
-	if cacheMiss {
+	if true {
 		result, err := ctx.Request(sfplugins.AutoRequestSelect, inStatefun.CONTROLLER_CONSTRUCT, realObjectID, &controllerDeclaration, nil)
 		if err != nil {
 			result = easyjson.NewJSONObject().GetPtr()
@@ -437,7 +446,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 		newResult = result.GetByPath("result")
 
 		body.SetByPath("result", newResult)
-		body.SetByPath("cached_real_object_body_hash", easyjson.NewJSON(realObjectDataHash))
+		//body.SetByPath("cached_real_object_body_hash", easyjson.NewJSON(realObjectDataHash))
 	}
 
 	if len(forceUpdateSessionId) == 0 && checkUpdates {

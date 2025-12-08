@@ -24,7 +24,6 @@ Request: {}
 */
 func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 	db := common.MustDBClient(ctx.Request)
-	visited := make(map[string]struct{})
 
 	data, err := db.Graph.VertexRead(ctx.Self.ID, true)
 	if err != nil {
@@ -32,6 +31,7 @@ func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		return
 	}
 
+	visited_in := make(map[string]struct{})
 	in := []string{}
 	for i := 0; i < data.GetByPath("links.in").ArraySize(); i++ {
 		objectID := data.GetByPath("links.in").ArrayElement(i).GetByPath("from").AsStringDefault("")
@@ -50,15 +50,16 @@ func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			continue
 		}
 
-		if _, ok := visited[linkType]; ok {
+		if _, ok := visited_in[linkType]; ok {
 			continue
 		}
 
-		visited[linkType] = struct{}{}
+		visited_in[linkType] = struct{}{}
 
 		in = append(in, linkType)
 	}
 
+	visited_out := make(map[string]struct{})
 	out := []string{}
 	for i := 0; i < data.GetByPath("links.out.names").ArraySize(); i++ {
 		linkType := data.GetByPath("links.out.types").ArrayElement(i).AsStringDefault("")
@@ -67,11 +68,11 @@ func inOutLinkTypes(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			continue
 		}
 
-		if _, ok := visited[linkType]; ok {
+		if _, ok := visited_out[linkType]; ok {
 			continue
 		}
 
-		visited[linkType] = struct{}{}
+		visited_out[linkType] = struct{}{}
 
 		out = append(out, linkType)
 	}

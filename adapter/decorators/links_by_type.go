@@ -38,6 +38,8 @@ func linksByType(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		return
 	}
 
+	linkReverse := ctx.Payload.GetByPath("link_reverse").AsBoolDefault(false)
+
 	db := common.MustDBClient(ctx.Request)
 	data, err := db.Graph.VertexRead(ctx.Self.ID, true)
 	if err != nil {
@@ -53,11 +55,19 @@ func linksByType(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		if linkType != filterLinkType {
 			continue
 		}
-		result = append(result, link{
-			Source: ctx.Self.ID,
-			Target: ctx.Domain.GetObjectIDByShadowObjectID(toId),
-			Type:   filterLinkType,
-		})
+		if linkReverse {
+			result = append(result, link{
+				Source: ctx.Domain.GetObjectIDByShadowObjectID(toId),
+				Target: ctx.Self.ID,
+				Type:   filterLinkType,
+			})
+		} else {
+			result = append(result, link{
+				Source: ctx.Self.ID,
+				Target: ctx.Domain.GetObjectIDByShadowObjectID(toId),
+				Type:   filterLinkType,
+			})
+		}
 	}
 
 	for i := 0; i < data.GetByPath("links.in").ArraySize(); i++ {
@@ -69,11 +79,19 @@ func linksByType(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 			continue
 		}
 
-		result = append(result, link{
-			Source: ctx.Domain.GetObjectIDByShadowObjectID(objectID),
-			Target: ctx.Self.ID,
-			Type:   filterLinkType,
-		})
+		if linkReverse {
+			result = append(result, link{
+				Source: ctx.Self.ID,
+				Target: ctx.Domain.GetObjectIDByShadowObjectID(objectID),
+				Type:   filterLinkType,
+			})
+		} else {
+			result = append(result, link{
+				Source: ctx.Domain.GetObjectIDByShadowObjectID(objectID),
+				Target: ctx.Self.ID,
+				Type:   filterLinkType,
+			})
+		}
 	}
 
 	okResponse(ctx, result)

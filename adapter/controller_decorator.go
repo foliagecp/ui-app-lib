@@ -106,12 +106,18 @@ func (c *controllerFunction) Decorate(db *db.DBSyncClient, _ *easyjson.JSON) eas
 		out := getOutLinkTypes(db, c.id)
 		return easyjson.NewJSON(out)
 	case "getLinksByType":
-		if len(c.args) != 1 {
+		if len(c.args) < 1 {
 			return easyjson.NewJSON("invalid arguments")
 		}
 
 		lt := c.args[0]
-		out := getLinksByType(db, c.id, lt)
+
+		rev := false
+		if len(c.args) == 2 && c.args[1] == "link_reverse" {
+			rev = true
+		}
+
+		out := getLinksByType(db, c.id, lt, rev)
 		return easyjson.NewJSON(out)
 	case "typesNavigation":
 		if len(c.args) != 1 {
@@ -171,25 +177,25 @@ func parseDecorators(objectID string, payload *easyjson.JSON) map[string]control
 }
 
 func extractFunctionAndArgs(s string) (string, []string, error) {
-	// Убираем пробелы в начале/конце и проверяем наличие скобок
+	// Trim leading/trailing spaces and verify that the string ends with a closing parenthesis
 	s = strings.TrimSpace(s)
 	if len(s) == 0 || s[len(s)-1] != ')' {
 		return "", nil, fmt.Errorf("invalid function format: %s", s)
 	}
 
-	// Ищем открывающую скобку
+	// Find the opening parenthesis
 	openParenIndex := strings.Index(s, "(")
 	if openParenIndex == -1 {
 		return "", nil, fmt.Errorf("invalid function format: %s", s)
 	}
 
-	// Извлекаем имя функции
+	// Extract the function name
 	funcName := strings.TrimSpace(s[:openParenIndex])
 	if len(funcName) == 0 {
 		return "", nil, fmt.Errorf("function name is missing")
 	}
 
-	// Извлекаем строку с аргументами
+	// Extract the argument string
 	argsStr := s[openParenIndex+1 : len(s)-1]
 	args, err := parseArguments(argsStr)
 	if err != nil {
@@ -370,9 +376,10 @@ type Link struct {
 	Tags   []string `json:"tags,omitempty"`
 }
 
-func getLinksByType(db *db.DBSyncClient, id, filterLinkType string) []Link {
+func getLinksByType(db *db.DBSyncClient, id, filterLinkType string, linkReverse bool) []Link {
 	payload := easyjson.NewJSONObject()
 	payload.SetByPath("link_type", easyjson.NewJSON(filterLinkType))
+	payload.SetByPath("link_reverse", easyjson.NewJSON(linkReverse))
 
 	result, err := db.Request(sf.AutoRequestSelect, inStatefun.LINKS_TYPE_DECORATOR, id, &payload, nil)
 	if err != nil {

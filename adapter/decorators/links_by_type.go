@@ -55,7 +55,7 @@ func linksByType(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		}
 		result = append(result, link{
 			Source: ctx.Self.ID,
-			Target: toId,
+			Target: ctx.Domain.GetObjectIDByShadowObjectID(toId),
 			Type:   filterLinkType,
 		})
 	}
@@ -70,7 +70,7 @@ func linksByType(_ sf.StatefunExecutor, ctx *sf.StatefunContextProcessor) {
 		}
 
 		result = append(result, link{
-			Source: objectID,
+			Source: ctx.Domain.GetObjectIDByShadowObjectID(objectID),
 			Target: ctx.Self.ID,
 			Type:   filterLinkType,
 		})

@@ -75,43 +75,53 @@ func InitSchema(ctx context.Context, runtime *statefun.Runtime) error {
 		return err
 	}
 
-	if err := cmdb.TypeCreate(
+	if err := cmdb.TypeUpdate(
 		common.SetHubPreffix(runtime.Domain, inStatefun.CONTROLLER_TYPE),
 		easyjson.NewJSONObject(),
+		false,
+		true,
 	); err != nil {
 		return err
 	}
 
-	if err := cmdb.TypeCreate(
+	if err := cmdb.TypeUpdate(
 		common.SetHubPreffix(runtime.Domain, inStatefun.CONTROLLER_OBJECT_TYPE),
 		easyjson.NewJSONObject(),
+		false,
+		true,
 	); err != nil {
 		return err
 	}
 
-	if err := cmdb.TypesLinkCreate(
+	if err := cmdb.TypesLinkUpdate(
 		common.SetHubPreffix(runtime.Domain, inStatefun.SESSION_TYPE),
 		common.SetHubPreffix(runtime.Domain, inStatefun.CONTROLLER_TYPE),
+		[]string{},
+		easyjson.NewJSONObject(),
+		false,
 		inStatefun.CONTROLLER_TYPE,
-		[]string{},
 	); err != nil {
 		return err
 	}
 
-	if err := cmdb.TypesLinkCreate(
+	if err := cmdb.TypesLinkUpdate(
 		common.SetHubPreffix(runtime.Domain, inStatefun.CONTROLLER_TYPE),
 		common.SetHubPreffix(runtime.Domain, inStatefun.SESSION_TYPE),
-		inStatefun.SUBSCRIBER_TYPE,
 		[]string{},
+		easyjson.NewJSONObject(),
+		false,
+		inStatefun.SUBSCRIBER_TYPE,
 	); err != nil {
 		return err
 	}
 
-	if err := cmdb.TypesLinkCreate(
+	if err := cmdb.TypesLinkUpdate(
 		common.SetHubPreffix(runtime.Domain, inStatefun.CONTROLLER_TYPE),
 		common.SetHubPreffix(runtime.Domain, inStatefun.CONTROLLER_OBJECT_TYPE),
-		inStatefun.CONTROLLER_OBJECT_TYPE,
 		[]string{},
+		easyjson.NewJSONObject(),
+		false,
+		inStatefun.CONTROLLER_OBJECT_TYPE,
 	); err != nil {
 		return err
 	}

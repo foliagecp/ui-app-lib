@@ -455,6 +455,16 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 		}
 	}
 
+	// Set meta information ---------------------------------------------------
+	meta := easyjson.NewJSONObject()
+
+	if t, e := crud.FindObjectType(ctx, realObjectID); e == nil {
+		meta.SetByPath("types", easyjson.NewJSON([]string{t}))
+	}
+
+	newResult.SetByPath("__meta__", meta)
+	// ------------------------------------------------------------------------
+
 	// send update to controller subs -----------------------------------------
 	controllerPlugin, _ := controllerBody.GetByPath("plugin").AsString()
 

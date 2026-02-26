@@ -70,6 +70,14 @@ func InitSchema(ctx context.Context, runtime *statefun.Runtime) error {
 		return err
 	}
 
+	/*// TODO: Copy sessions from weak clustering domains -------------------
+	ids, err := dbc.Query.JPGQLCtraQuery(inStatefun.SESSION_TYPE, fmt.Sprintf(".*[l:type('%s')]", crud.OBJECT_TYPELINK))
+	if err != nil {
+		logger.GetLogger().Error(context.TODO(), err.Error())
+		return
+	}
+	// --------------------------------------------------------------*/
+
 	return nil
 }
 

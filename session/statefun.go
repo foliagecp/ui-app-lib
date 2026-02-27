@@ -46,26 +46,31 @@ func InitSchema(ctx context.Context, runtime *statefun.Runtime) error {
 		return err
 	}
 
-	if err := c.TypeCreate(
+	if err := c.TypeUpdate(
 		common.SetHubPreffix(runtime.Domain, inStatefun.SESSION_TYPE),
 		easyjson.NewJSONObject(),
+		false,
+		true,
 	); err != nil {
 		return err
 	}
 
-	if err := c.TypesLinkCreate(
+	if err := c.TypesLinkUpdate(
 		common.SetHubPreffix(runtime.Domain, crud.BUILT_IN_TYPE_GROUP),
 		common.SetHubPreffix(runtime.Domain, inStatefun.SESSION_TYPE),
-		inStatefun.SESSION_TYPE,
 		[]string{},
+		easyjson.NewJSONObject(),
+		false,
+		inStatefun.SESSION_TYPE,
 	); err != nil {
 		return err
 	}
 
-	if err := c.ObjectCreate(
+	if err := c.ObjectUpdate(
 		common.SetHubPreffix(runtime.Domain, inStatefun.SESSIONS_ENTYPOINT),
-		common.SetHubPreffix(runtime.Domain, crud.BUILT_IN_TYPE_GROUP),
 		easyjson.NewJSONObject(),
+		false,
+		common.SetHubPreffix(runtime.Domain, crud.BUILT_IN_TYPE_GROUP),
 	); err != nil {
 		return err
 	}

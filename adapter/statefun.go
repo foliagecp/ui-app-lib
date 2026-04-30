@@ -395,7 +395,7 @@ func UpdateControllerObject(_ sfplugins.StatefunExecutor, ctx *sfplugins.Statefu
 				}
 			}
 
-			if err := cmdb.ObjectsLinkCreate(controllerObjectID, realObjectID, "uiapplib_"+realObjectID, []string{}); err != nil {
+			if err := cmdb.ObjectsLinkCreate(controllerObjectID, realObjectID, "uiapplib_"+ctx.Domain.GetObjectIDWithoutDomain(realObjectID), []string{}); err != nil {
 				if !common.ErrorAlreadyExists(err) {
 					logger.GetLogger().Warnf(context.TODO(), "failed to create objects link between controller object and uuid, err=%s", err.Error())
 					return
